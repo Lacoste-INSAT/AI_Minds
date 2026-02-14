@@ -30,8 +30,8 @@ A system that builds an evolving knowledge graph from your personal data — not
 
 | Document | Purpose |
 |---|---|
-| [ARCHITECTURE-OLD.md](ARCHITECTURE-OLD.md) | Canonical full architecture spec (Synapsis-updated) |
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Compact architecture summary |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Canonical full architecture spec (18 sections, v3.0) |
+| [ARCHITECTURE-OLD.md](ARCHITECTURE-OLD.md) | Legacy MemoryGraph architecture (pre-Synapsis, for reference) |
 | [RESEARCH.md](RESEARCH.md) | Open questions to resolve before coding |
 
 ## Compliance
