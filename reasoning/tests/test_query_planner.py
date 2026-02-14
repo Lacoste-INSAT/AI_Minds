@@ -8,12 +8,12 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
-from backend.reasoning.cpumodel.query_planner import (
+from reasoning.cpumodel.query_planner import (
     _classify_by_heuristics,
     _extract_entities_basic,
     classify_query,
 )
-from backend.reasoning.cpumodel.models import QueryType
+from reasoning.cpumodel.models import QueryType
 
 
 class TestHeuristicClassification:

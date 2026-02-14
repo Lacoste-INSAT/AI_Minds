@@ -83,7 +83,7 @@ class FusedContext:
 class AnswerPacket:
     """
     Final response structure - the contract with frontend.
-    Every field except reasoning_chain is MANDATORY.
+    Every field is MANDATORY except uncertainty_reason and reasoning_chain.
     """
     answer: str
     confidence: ConfidenceLevel

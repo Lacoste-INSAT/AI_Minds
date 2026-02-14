@@ -128,22 +128,20 @@ _client is set. Not a showstopper but unprofessional.
 FIX: Use asyncio.Lock or create client at module import time.
 
 
-## ISSUE 7: Critic JSON parsing failure defaults to APPROVE
+## ISSUE 7: Critic JSON parsing failure defaults to REVISE (FIXED)
 Location: llm_agent.py:141-145
+
+The implementation correctly defaults to REVISE when critic JSON parsing fails,
+which is the safer approach for hallucination prevention:
 
 ```python
 except json.JSONDecodeError:
-    logger.warning("Critic returned invalid JSON, defaulting to APPROVE")
-    return VerificationVerdict.APPROVE, "Verification unavailable", None
+    logger.warning("Critic returned invalid JSON, defaulting to REVISE")
+    return VerificationVerdict.REVISE, "Verification parsing failed - treating as needs revision", None
 ```
 
-PROBLEM: If the LLM fails to return valid JSON (common with small models),
-we APPROVE potentially hallucinated answers. This is dangerous.
-
-FIX: Default to REVISE or LOW confidence, not APPROVE:
-```python
-return VerificationVerdict.REVISE, "Verification parsing failed", None
-```
+STATUS: Already implemented correctly. Defaulting to REVISE rather than APPROVE
+prevents potentially hallucinated answers from being auto-approved.
 
 
 ## ISSUE 8: No input validation or sanitization

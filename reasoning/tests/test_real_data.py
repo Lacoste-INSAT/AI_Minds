@@ -6,19 +6,19 @@ Tests using realistic data from Wikipedia and simulated team documents.
 These tests validate accuracy in real-world scenarios.
 
 Run with:
-    pytest backend/reasoning/tests/test_real_data.py -v
+    pytest reasoning/tests/test_real_data.py -v
 """
 
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from backend.reasoning.tests.test_fixtures import (
+from reasoning.tests.test_fixtures import (
     REAL_TEST_CHUNKS,
     TEST_QUESTIONS,
     BM25_TEST_CORPUS,
     ACCURACY_TEST_CASES,
 )
-from backend.reasoning.cpumodel.models import (
+from reasoning.cpumodel.models import (
     QueryType,
     ConfidenceLevel,
     FusedContext,
@@ -26,9 +26,9 @@ from backend.reasoning.cpumodel.models import (
     LLMResponse,
     ModelTier,
 )
-from backend.reasoning.cpumodel.query_planner import classify_query, _extract_entities_basic
-from backend.reasoning.cpumodel.fusion import fuse_results, format_context_for_llm
-from backend.reasoning.cpumodel.llm_agent import (
+from reasoning.cpumodel.query_planner import classify_query, _extract_entities_basic
+from reasoning.cpumodel.fusion import fuse_results, format_context_for_llm
+from reasoning.cpumodel.llm_agent import (
     reason_and_respond,
     compute_confidence,
     _build_reasoning_prompt,
@@ -107,7 +107,7 @@ class TestFusionRealData:
     def test_fuse_rag_chunks(self):
         """Fuse RAG-related chunks."""
         # Simulate retrieval results
-        from backend.reasoning.cpumodel.models import RetrievalResult
+        from reasoning.cpumodel.models import RetrievalResult
         
         rag_chunks = [c for c in REAL_TEST_CHUNKS if "rag" in c.chunk_id.lower()][:5]
         
@@ -211,7 +211,7 @@ class TestLLMAgentRealData:
             graph_count=0,
         )
         
-        with patch("backend.reasoning.cpumodel.llm_agent.generate_completion") as mock_llm:
+        with patch("reasoning.cpumodel.llm_agent.generate_completion") as mock_llm:
             # Mock LLM responses
             mock_llm.side_effect = [
                 # Synthesis response
@@ -270,7 +270,7 @@ class TestAccuracyEvaluation:
             graph_count=0,
         )
         
-        with patch("backend.reasoning.cpumodel.llm_agent.generate_completion") as mock_llm:
+        with patch("reasoning.cpumodel.llm_agent.generate_completion") as mock_llm:
             # Create an answer that includes expected terms
             answer_content = f"Based on the sources: {test_case['golden_answer']} [Source 1]"
             
@@ -365,7 +365,7 @@ class TestConfidenceWithRealData:
     
     def test_high_confidence_multiple_sources(self):
         """Multiple matching sources should give high confidence."""
-        from backend.reasoning.cpumodel.models import VerificationVerdict
+        from reasoning.cpumodel.models import VerificationVerdict
         
         rag_chunks = [c for c in REAL_TEST_CHUNKS if "rag" in c.chunk_id.lower()][:4]
         
@@ -386,7 +386,7 @@ class TestConfidenceWithRealData:
     
     def test_low_confidence_single_source(self):
         """Single source should give lower confidence."""
-        from backend.reasoning.cpumodel.models import VerificationVerdict
+        from reasoning.cpumodel.models import VerificationVerdict
         
         single_chunk = [REAL_TEST_CHUNKS[0]]
         
@@ -407,7 +407,7 @@ class TestConfidenceWithRealData:
     
     def test_no_confidence_on_reject(self):
         """Rejection should give low/none confidence."""
-        from backend.reasoning.cpumodel.models import VerificationVerdict
+        from reasoning.cpumodel.models import VerificationVerdict
         
         chunks = [c for c in REAL_TEST_CHUNKS[:3]]
         

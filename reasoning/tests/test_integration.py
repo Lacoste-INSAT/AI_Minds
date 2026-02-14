@@ -16,11 +16,11 @@ class TestFullPipelineWithMocks:
     @pytest.mark.asyncio
     async def test_simple_query_pipeline(self):
         """Test SIMPLE query through full pipeline with mocked retrieval."""
-        from backend.reasoning.cpumodel.models import (
+        from reasoning.cpumodel.models import (
             QueryType, ConfidenceLevel, VerificationVerdict, ModelTier,
             FusedContext, ChunkEvidence
         )
-        from backend.reasoning.cpumodel.llm_agent import reason_and_respond
+        from reasoning.cpumodel.llm_agent import reason_and_respond
         
         # Create mock fused context with real chunks
         mock_chunks = [
@@ -40,9 +40,9 @@ class TestFullPipelineWithMocks:
         )
         
         # Mock the Ollama client to avoid needing actual LLM
-        with patch("backend.reasoning.cpumodel.llm_agent.generate_completion") as mock_llm:
+        with patch("reasoning.cpumodel.llm_agent.generate_completion") as mock_llm:
             # Mock synthesis response
-            from backend.reasoning.cpumodel.models import LLMResponse
+            from reasoning.cpumodel.models import LLMResponse
             mock_llm.side_effect = [
                 # First call: synthesis
                 LLMResponse(
@@ -79,8 +79,8 @@ class TestFullPipelineWithMocks:
     @pytest.mark.asyncio
     async def test_multi_hop_query_uses_graph(self):
         """Test MULTI_HOP query attempts graph retrieval."""
-        from backend.reasoning.cpumodel.query_planner import classify_query
-        from backend.reasoning.cpumodel.models import QueryType
+        from reasoning.cpumodel.query_planner import classify_query
+        from reasoning.cpumodel.models import QueryType
         
         # Use classify_query with use_llm=False to test heuristics only
         plan = await classify_query("What did John say about the project?", use_llm=False)
@@ -97,7 +97,7 @@ class TestPipelineEdgeCases:
     @pytest.mark.asyncio
     async def test_handles_empty_query(self):
         """Empty query should not crash."""
-        from backend.reasoning.cpumodel.query_planner import classify_query
+        from reasoning.cpumodel.query_planner import classify_query
         
         result = await classify_query("", use_llm=False)
         assert result is not None
@@ -106,7 +106,7 @@ class TestPipelineEdgeCases:
     @pytest.mark.asyncio
     async def test_handles_very_long_query(self):
         """Very long query should be handled."""
-        from backend.reasoning.cpumodel.query_planner import classify_query
+        from reasoning.cpumodel.query_planner import classify_query
         
         long_query = "What is the deadline? " * 100
         result = await classify_query(long_query, use_llm=False)
@@ -114,8 +114,8 @@ class TestPipelineEdgeCases:
     
     def test_fusion_handles_all_empty(self):
         """Fusion with all empty results should not crash."""
-        from backend.reasoning.cpumodel.fusion import fuse_results
-        from backend.reasoning.cpumodel.models import RetrievalResult
+        from reasoning.cpumodel.fusion import fuse_results
+        from reasoning.cpumodel.models import RetrievalResult
         
         results = {
             "dense": RetrievalResult(chunks=[], retrieval_type="dense"),
@@ -133,7 +133,7 @@ class TestContractCompliance:
     
     def test_answer_packet_has_required_fields(self):
         """AnswerPacket must have all fields per Section 9.1."""
-        from backend.reasoning.cpumodel.models import (
+        from reasoning.cpumodel.models import (
             AnswerPacket, ConfidenceLevel, VerificationVerdict,
             QueryType, ModelTier
         )
@@ -159,8 +159,8 @@ class TestContractCompliance:
     
     def test_default_model_is_t3(self):
         """Default should be T3 (CPU) per our CPU-only requirement."""
-        from backend.reasoning.cpumodel.ollama_client import DEFAULT_TIER
-        from backend.reasoning.cpumodel.models import ModelTier
+        from reasoning.cpumodel.ollama_client import DEFAULT_TIER
+        from reasoning.cpumodel.models import ModelTier
         
         assert DEFAULT_TIER == ModelTier.T3
         assert DEFAULT_TIER.value == "qwen2.5:0.5b"

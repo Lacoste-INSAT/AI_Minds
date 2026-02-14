@@ -9,7 +9,7 @@ Endpoints:
 - GET  /query/health → Health check for reasoning services
 
 Usage:
-    from backend.reasoning.api import router
+    from reasoning.api import router
     app.include_router(router, prefix="/query", tags=["reasoning"])
 """
 
@@ -19,14 +19,14 @@ from typing import Optional
 import logging
 import time
 
-from backend.reasoning.cpumodel.models import (
+from reasoning.cpumodel.models import (
     ModelTier,
     ConfidenceLevel,
     VerificationVerdict,
     AnswerPacket,
 )
-from backend.reasoning.cpumodel.engine import process_query
-from backend.reasoning.cpumodel.ollama_client import get_ollama_client, DEFAULT_TIER
+from reasoning.cpumodel.engine import process_query
+from reasoning.cpumodel.ollama_client import get_ollama_client, DEFAULT_TIER
 
 logger = logging.getLogger(__name__)
 
@@ -162,7 +162,7 @@ async def ask_question(request: QueryRequest) -> QueryResponse:
             confidence=result.confidence.value if result.confidence else "none",
             verification=result.verification.value if result.verification else "REVISE",
             sources=sources,
-            model_used=result.model_used.value if result.model_used else "T3",
+            model_used=result.model_used.name if result.model_used else "T3",
             latency_ms=elapsed_ms,
             reasoning_chain=result.reasoning_chain,
         )
@@ -200,13 +200,21 @@ async def check_health() -> HealthResponse:
         client = get_ollama_client()
         health = await client.health_check()
         
-        if health.get("healthy", False):
-            tier = health.get("available_tier")
+        if health.get("status") == "up":
+            # Determine best available tier
+            if health.get("t1_available"):
+                tier = "T1"
+            elif health.get("t2_available"):
+                tier = "T2"
+            elif health.get("t3_available"):
+                tier = "T3"
+            else:
+                tier = None
             return HealthResponse(
                 status="healthy",
                 ollama=True,
-                model_available=tier.value if tier else None,
-                message=f"Using model tier {tier.value}" if tier else "Ollama ready",
+                model_available=tier,
+                message=f"Using model tier {tier}" if tier else "Ollama ready",
             )
         else:
             return HealthResponse(
@@ -235,10 +243,10 @@ def create_app():
     Create FastAPI app for standalone testing.
     
     Usage:
-        uvicorn backend.reasoning.api:create_app --factory --reload
+        uvicorn reasoning.api:create_app --factory --reload
     
     Or import the router into the main app:
-        from backend.reasoning.api import router
+        from reasoning.api import router
         app.include_router(router, prefix="/query", tags=["reasoning"])
     """
     from fastapi import FastAPI
@@ -272,5 +280,5 @@ def create_app():
     return app
 
 
-# For running directly: uvicorn backend.reasoning.api:app --reload
+# For running directly: uvicorn reasoning.api:app --reload
 app = create_app()
