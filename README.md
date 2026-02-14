@@ -1,4 +1,4 @@
-# MemoryGraph — Personal Knowledge Assistant
+# Synapsis — Personal Knowledge Assistant
 
 > **Status**: FINAL DESIGN — Ready to implement  
 > **Team**: AI MINDS (5 people, 24h build)  
@@ -17,7 +17,7 @@ A system that builds an evolving knowledge graph from your personal data — not
 
 | | |
 |---|---|
-| **LLM** | Phi-3.5-mini-instruct (3.8B) via Ollama, Qwen2.5-3B fallback |
+| **LLM** | Phi-4-mini-instruct (3.8B) via Ollama, Qwen2.5-3B fallback |
 | **Embeddings** | all-MiniLM-L6-v2 (384-dim, local) |
 | **Vector DB** | Qdrant (on-disk persistence) |
 | **Graph Store** | SQLite + JSON columns |
@@ -30,7 +30,8 @@ A system that builds an evolving knowledge graph from your personal data — not
 
 | Document | Purpose |
 |---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System design, data contracts, build schedule |
+| [ARCHITECTURE-OLD.md](ARCHITECTURE-OLD.md) | Canonical full architecture spec (Synapsis-updated) |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Compact architecture summary |
 | [RESEARCH.md](RESEARCH.md) | Open questions to resolve before coding |
 
 ## Compliance
@@ -38,7 +39,7 @@ A system that builds an evolving knowledge graph from your personal data — not
 | Rule | Status |
 |------|--------|
 | No proprietary APIs | ✅ Zero external API calls |
-| LLM < 4B parameters | ✅ Phi-3.5-mini = 3.8B params |
+| LLM < 4B parameters | ✅ Phi-4-mini = 3.8B params |
 | Open-source model | ✅ MIT license |
 | Local embeddings | ✅ sentence-transformers, no API |
 | Local vector DB | ✅ Qdrant on-disk |

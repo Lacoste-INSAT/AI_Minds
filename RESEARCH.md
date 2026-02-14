@@ -1,4 +1,4 @@
-# MemoryGraph — Research & Open Decisions (FINAL)
+# Synapsis — Research & Open Decisions (FINAL)
 
 > **Status**: Resolve these BEFORE writing code  
 > **Date**: 2026-02-14
@@ -26,13 +26,13 @@
 
 ## RQ-1: Which LLM? (CRITICAL — Resolve first)
 
-**Primary candidate**: Phi-3.5-mini-instruct (3.8B, MIT license)  
+**Primary candidate**: Phi-4-mini-instruct (3.8B, MIT license)  
 **Fallback candidate**: Qwen2.5-3B-Instruct (3B, Apache 2.0)  
 **DO NOT USE**: qwen2.5:0.5b — too weak for entity extraction, QA, or verification. Will produce garbage.
 
 | Model | Params | Why Consider | Risk |
 |---|---|---|---|
-| Phi-3.5-mini-instruct | 3.8B | Best reasoning at size, good structured output | Slower on CPU |
+| Phi-4-mini-instruct | 3.8B | Better reasoning at size, strong tool/function orchestration | Slower on CPU |
 | Qwen2.5-3B-Instruct | 3B | Faster, multilingual, solid instruction following | Weaker reasoning |
 | Llama-3.2-3B-Instruct | 3.2B | Strong instruction following | Newer, less testing |
 
@@ -44,7 +44,7 @@
 5. Measure latency on demo hardware (CPU and GPU if available)
 6. Score: 40% quality + 30% JSON reliability + 30% speed → PICK ONE
 
-**Expected outcome**: Phi-3.5-mini wins on quality, Qwen2.5-3B wins on speed. If demo hardware has GPU → Phi-3.5. If CPU-only → may need Qwen2.5-3B.
+**Expected outcome**: Phi-4-mini wins on quality, Qwen2.5-3B wins on speed. If demo hardware has GPU → Phi-4-mini. If CPU-only → may need Qwen2.5-3B.
 
 ---
 
@@ -55,7 +55,7 @@
 **Action items**:
 1. Identify the exact laptop we demo on — whose machine?
 2. Does it have a GPU? What GPU? VRAM?
-3. Test inference speed: `time ollama run phi3.5 "Extract entities from: John met Sarah to discuss the Q3 budget."`
+3. Test inference speed: `time ollama run phi4-mini "Extract entities from: John met Sarah to discuss the Q3 budget."`
 4. If CPU-only: MUST use quantized GGUF (Q4_K_M), expect 5-10s per response
 5. If GPU (even modest): Full quantization, expect 2-3s per response
 6. Pre-compute everything possible (embeddings, graph, enrichment) — only live LLM call during demo is the QA response

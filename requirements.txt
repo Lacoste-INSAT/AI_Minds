@@ -1,4 +1,4 @@
-# MemoryGraph — Python Dependencies
+# Synapsis — Python Dependencies
 # Pin versions after initial install: pip freeze > requirements.lock
 
 # === Core Framework ===
