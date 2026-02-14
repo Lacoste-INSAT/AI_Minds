@@ -34,6 +34,11 @@ def _add_insight(insight_type: str, title: str, description: str, entities: list
     }
     _insights.append(insight)
 
+    # Cap list size to prevent unbounded memory growth
+    _MAX_INSIGHTS = 500
+    if len(_insights) > _MAX_INSIGHTS:
+        del _insights[:-_MAX_INSIGHTS]
+
     log_audit("insight_generated", insight)
     logger.info("proactive.insight", type=insight_type, title=title)
 
