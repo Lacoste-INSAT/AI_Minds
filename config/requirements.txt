@@ -33,13 +33,13 @@ spacy>=3.8
 # Post-install: python -m spacy download en_core_web_sm
 
 # === Document Parsing ===
-pymupdf>=1.25             # PDF extraction (import fitz)
-python-docx>=1.1          # DOCX extraction
-Pillow>=11.0              # image handling
-pytesseract>=0.3          # OCR
+pymupdf>=1.25              # PDF extraction (import fitz)
+python-docx>=1.1           # DOCX extraction
+Pillow>=11.0               # image handling
+pytesseract>=0.3           # OCR (requires Tesseract installed on system)
 
 # === Audio Transcription ===
-faster-whisper>=1.1       # tiny model, CPU-friendly
+faster-whisper>=1.1        # tiny model, CPU-friendly
 
 # === File Watching ===
 watchdog>=6.0
