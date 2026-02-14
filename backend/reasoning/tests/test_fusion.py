@@ -8,13 +8,13 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
-from reasoning.reasoning.cpumodel.fusion import (
+from backend.reasoning.cpumodel.fusion import (
     fuse_results,
     format_context_for_llm,
     _compute_rrf_score,
     _compute_recency_factor,
 )
-from reasoning.reasoning.cpumodel.models import ChunkEvidence, RetrievalResult
+from backend.reasoning.cpumodel.models import ChunkEvidence, RetrievalResult
 
 
 class TestRRFScoreComputation:
@@ -203,7 +203,7 @@ class TestFormatContextForLLM:
     
     def test_empty_context(self):
         """Empty chunks should return placeholder."""
-        from reasoning.reasoning.cpumodel.models import FusedContext
+        from backend.reasoning.cpumodel.models import FusedContext
         fused = FusedContext(chunks=[], dense_count=0, sparse_count=0, graph_count=0)
         formatted = format_context_for_llm(fused)
         assert "No relevant context" in formatted
@@ -226,7 +226,7 @@ class TestFormatContextForLLM:
                 score_final=0.7,
             ),
         ]
-        from reasoning.reasoning.cpumodel.models import FusedContext
+        from backend.reasoning.cpumodel.models import FusedContext
         fused = FusedContext(chunks=chunks, dense_count=2, sparse_count=0, graph_count=0)
         
         formatted = format_context_for_llm(fused)
@@ -247,8 +247,9 @@ class TestFormatContextForLLM:
                 score_final=0.8,
             )
         ]
-        from reasoning.reasoning.cpumodel.models import FusedContext
+        from backend.reasoning.cpumodel.models import FusedContext
         fused = FusedContext(chunks=chunks, dense_count=1, sparse_count=0, graph_count=0)
         
         formatted = format_context_for_llm(fused, max_chars=1000)
         assert len(formatted) <= 1500  # Some overhead for markers
+

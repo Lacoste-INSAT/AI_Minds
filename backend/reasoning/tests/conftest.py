@@ -9,7 +9,7 @@ import os
 # Add parent to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from reasoning.reasoning.cpumodel.models import (
+from backend.reasoning.cpumodel.models import (
     ChunkEvidence,
     QueryType,
     ModelTier,
@@ -139,3 +139,4 @@ def mock_ollama_client(mock_ollama_response):
         client_instance.post.return_value = gen_response
         
         yield mock
+

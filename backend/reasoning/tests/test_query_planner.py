@@ -8,12 +8,12 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
-from reasoning.reasoning.cpumodel.query_planner import (
+from backend.reasoning.cpumodel.query_planner import (
     _classify_by_heuristics,
     _extract_entities_basic,
     classify_query,
 )
-from reasoning.reasoning.cpumodel.models import QueryType
+from backend.reasoning.cpumodel.models import QueryType
 
 
 class TestHeuristicClassification:
@@ -160,3 +160,4 @@ class TestClassifyQuery:
         original = "What is the project deadline?"
         result = await classify_query(original, use_llm=False)
         assert result.original_query == original
+

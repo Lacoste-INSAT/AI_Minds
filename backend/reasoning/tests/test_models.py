@@ -8,7 +8,7 @@ import os
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
-from reasoning.reasoning.cpumodel.models import (
+from backend.reasoning.cpumodel.models import (
     QueryType,
     ConfidenceLevel,
     VerificationVerdict,
@@ -168,3 +168,4 @@ class TestLLMResponse:
         )
         assert response.success is False
         assert response.error == "Connection timeout"
+

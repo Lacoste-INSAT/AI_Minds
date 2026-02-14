@@ -8,13 +8,13 @@ from unittest.mock import AsyncMock, patch, MagicMock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))))
 
-from reasoning.reasoning.cpumodel.llm_agent import (
+from backend.reasoning.cpumodel.llm_agent import (
     compute_confidence,
     _generate_abstention_response,
     _build_reasoning_prompt,
     _build_critic_prompt,
 )
-from reasoning.reasoning.cpumodel.models import (
+from backend.reasoning.cpumodel.models import (
     ChunkEvidence,
     ConfidenceLevel,
     FusedContext,
@@ -180,8 +180,8 @@ class TestIntegrationWithMocks:
     @pytest.mark.asyncio
     async def test_reason_and_respond_empty_context(self):
         """Should abstain with empty context."""
-        from reasoning.reasoning.cpumodel.llm_agent import reason_and_respond
-        from reasoning.reasoning.cpumodel.models import QueryType, ModelTier
+        from backend.reasoning.cpumodel.llm_agent import reason_and_respond
+        from backend.reasoning.cpumodel.models import QueryType, ModelTier
         
         fused = FusedContext(chunks=[], dense_count=0, sparse_count=0, graph_count=0)
         
@@ -195,3 +195,4 @@ class TestIntegrationWithMocks:
         assert result.confidence == ConfidenceLevel.NONE
         assert result.verification == VerificationVerdict.REJECT
         assert "don't have enough" in result.answer.lower()
+

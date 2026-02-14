@@ -11,10 +11,10 @@ Data covers:
 - AI/ML concepts
 
 Usage:
-    from reasoning.reasoning.tests.test_fixtures import REAL_TEST_CHUNKS, TEST_QUESTIONS
+    from backend.reasoning.tests.test_fixtures import REAL_TEST_CHUNKS, TEST_QUESTIONS
 """
 
-from reasoning.reasoning.cpumodel.models import ChunkEvidence
+from backend.reasoning.cpumodel.models import ChunkEvidence
 
 # =============================================================================
 # Real-World Test Chunks (simulating ingested documents)
@@ -348,3 +348,4 @@ ACCURACY_TEST_CASES = [
         "must_not_contain": ["GPT", "Claude"],
     },
 ]
+
