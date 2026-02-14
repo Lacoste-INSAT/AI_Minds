@@ -2,9 +2,10 @@
 
 import time
 import logging
+import queue
 import threading
-from collections import deque
-from typing import Dict, Optional, Deque, Any
+from typing import Dict, List, Optional, Any
+from pathlib import Path
 
 from watchdog.observers import Observer
 
@@ -31,7 +32,7 @@ class SynapsisWatcher:
     def __init__(self, config: Optional[Dict[str, Any]] = None) -> None:
         self._config = config or load_config()
         self._checksums = ChecksumStore()
-        self._queue: Deque[FileEvent] = deque()
+        self._queue: queue.Queue[FileEvent] = queue.Queue()
         self._rate_limiter = RateLimiter(
             self._config.get("rate_limit_files_per_minute", 10)
         )
@@ -39,19 +40,27 @@ class SynapsisWatcher:
         self._stop = threading.Event()
         self._processor_thread: Optional[threading.Thread] = None
         self._scan_thread: Optional[threading.Thread] = None
+        self._started = False
 
     @property
-    def queue(self) -> Deque[FileEvent]:
+    def queue(self) -> "queue.Queue[FileEvent]":
         return self._queue
 
-    def start(self) -> None:
-        """Start live watch immediately, then scan in the background."""
+    def start(self) -> bool:
+        """Start live watch immediately, then scan in the background.
+
+        Returns True if the watcher started successfully, False otherwise.
+        """
+        if self._started:
+            logger.warning("Watcher already running — ignoring duplicate start().")
+            return True
+
         directories = resolve_directories(
             self._config.get("watched_directories", [])
         )
         if not directories:
             logger.error("No valid directories to watch — exiting.")
-            return
+            return False
 
         logger.info(
             "Watching %d director(ies): %s",
@@ -82,7 +91,10 @@ class SynapsisWatcher:
         )
         self._scan_thread.start()
 
-    def _background_scan(self, directories):
+        self._started = True
+        return True
+
+    def _background_scan(self, directories: List[Path]) -> None:
         """Run initial scan in background to catch offline changes."""
         logger.info("Background scan starting (%d directories)...", len(directories))
         try:
@@ -95,15 +107,33 @@ class SynapsisWatcher:
 
     def stop(self) -> None:
         """Gracefully shut down watcher + processor."""
-        logger.info("Stopping Synapsis watcher\u2026")
-        self._stop.set()
+        if not self._started:
+            logger.debug("stop() called but watcher was never started — no-op.")
+            return
+
+        logger.info("Stopping Synapsis watcher...")
+
+        # Stop filesystem observer first to prevent new live events.
         self._observer.stop()
         self._observer.join()
+
+        # Wait for background scan to finish enqueuing events before
+        # signaling the processor to stop, so no events are lost.
         if self._scan_thread:
             self._scan_thread.join(timeout=10)
+            if self._scan_thread.is_alive():
+                logger.warning("Background scan thread did not stop within 10s.")
+
+        # Now signal the processor to stop and wait for it to drain the queue.
+        self._stop.set()
+
         if self._processor_thread:
             self._processor_thread.join(timeout=5)
+            if self._processor_thread.is_alive():
+                logger.warning("Processor thread did not stop within 5s.")
+
         self._checksums.save()
+        self._started = False
         logger.info("Synapsis watcher stopped.")
 
 
@@ -117,7 +147,9 @@ def main() -> None:
         logger.info("Created default config at %s", CONFIG_PATH)
 
     watcher = SynapsisWatcher()
-    watcher.start()
+    if not watcher.start():
+        logger.error("Watcher failed to start. Check your configuration.")
+        return
 
     try:
         while True:

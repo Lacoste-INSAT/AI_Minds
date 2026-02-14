@@ -2,64 +2,39 @@
 
 ## Quick Start
 
-### 1. **Unit Tests** (components only)
+### 1. **Interactive Demo** (full watcher)
 
 ```cmd
-cd C:\Users\Asus\Desktop\AI_Minds\ingestion\observer
-python test_observer_unit.py
+cd C:\Users\Asus\Desktop\AI_Minds
+python -m ingestion.observer.windows_demo
 ```
 
-Results should show:
-
-```
-✓ Extension filtering works
-✓ Exclusion patterns work
-✓ Checksum computation works
-✓ Checksum store works
-✓ FileEvent works
-✓ Rate limiter works
-✓ Directory resolution works
-
-Results: 7 passed, 0 failed
-```
-
----
-
-### 2. **Interactive Test** (full watcher)
-
-```cmd
-cd C:\Users\Asus\Desktop\AI_Minds\ingestion\observer
-python test_observer.py
-```
-
-The watcher will start monitoring `%TEMP%\synapsis_test`. You'll see the test directory path in the output.
+The watcher will start monitoring your default directories (Documents, Desktop, Downloads, etc.). You'll see the watched directory paths in the output.
 
 **Test in a new terminal:**
 
 ```cmd
-cd %TEMP%\synapsis_test
-
-REM Create a text file - should be detected
-echo test content > notes.txt
+REM Create a text file in a watched directory - should be detected
+echo test content > "%USERPROFILE%\Documents\notes.txt"
 
 REM Modify it - should detect change
-echo more content >> notes.txt
+echo more content >> "%USERPROFILE%\Documents\notes.txt"
 
 REM Create a temp file - should be IGNORED
-echo temp > temp.tmp
+echo temp > "%USERPROFILE%\Documents\temp.tmp"
 
 REM Copy an image - should be detected
 copy C:\path\to\image.jpg test.jpg
 
 REM Delete - should detect deletion
-del notes.txt
+del "%USERPROFILE%\Documents\notes.txt"
 ```
 
 Watch the first terminal for `[PROCESS]` logs. Press `Ctrl+C` to stop.
 
 ---
 
-### 3. **Watch Real Directories**
+### 2. **Watch Real Directories**
 
 **Option A: Use defaults (Documents/Desktop/Downloads/Pictures/Music)**
 
@@ -76,8 +51,8 @@ cd C:\Users\Asus\Desktop\AI_Minds
 REM In CMD, use double backslashes
 python -c "from ingestion.observer import save_config; save_config({'watched_directories': ['C:\\\\Users\\\\Asus\\\\Desktop\\\\test_folder'], 'rate_limit_files_per_minute': 60})"
 
-REM In PowerShell, use single backslash
-python -c "from ingestion.observer import save_config; save_config({'watched_directories': ['C:\Users\Asus\Desktop\test_folder'], 'rate_limit_files_per_minute': 60})"
+REM In PowerShell, Python still needs escaped backslashes
+python -c "from ingestion.observer import save_config; save_config({'watched_directories': ['C:\\Users\\Asus\\Desktop\\test_folder'], 'rate_limit_files_per_minute': 60})"
 
 python -m ingestion.observer.watcher
 ```
@@ -175,7 +150,6 @@ python
     "~$*"
   ],
   "max_file_size_mb": 50,
-  "scan_interval_seconds": 30,
   "rate_limit_files_per_minute": 10
 }
 ```

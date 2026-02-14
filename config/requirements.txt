@@ -29,17 +29,17 @@ networkx>=3.4             # in-memory graph analysis
 # spacy>=3.8
 # Post-install: python -m spacy download en_core_web_sm
 
-# === Document Parsing (Person 3) ===
-# pymupdf>=1.25             # PDF extraction (import fitz)
-# python-docx>=1.1          # DOCX extraction
-# Pillow>=11.0              # image handling
-# pytesseract>=0.3          # OCR
+# === Document Parsing ===
+pymupdf>=1.25              # PDF extraction (import fitz)
+python-docx>=1.1           # DOCX extraction
+Pillow>=11.0               # image handling
+pytesseract>=0.3           # OCR (requires Tesseract installed on system)
 
-# === Audio Transcription (Person 3) ===
-# faster-whisper>=1.1       # tiny model, CPU-friendly
+# === Audio Transcription ===
+faster-whisper>=1.1        # tiny model, CPU-friendly
 
-# === File Watching (Person 3) ===
-# watchdog>=6.0
+# === File Watching ===
+watchdog>=6.0
 
 # === Scheduling ===
 apscheduler>=3.10
@@ -49,6 +49,3 @@ structlog>=24.4
 
 # === WebSocket (included with uvicorn[standard]) ===
 websockets>=14.0
-
-# === Monitoring file system events ===
-watchdog >=2.1.0

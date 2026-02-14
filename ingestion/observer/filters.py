@@ -19,11 +19,16 @@ def is_excluded(filepath: str, exclude_patterns: List[str]) -> bool:
     for pattern in exclude_patterns:
         if fnmatch.fnmatch(fp, f"*/{pattern}") or fnmatch.fnmatch(fp, pattern):
             return True
-        # Directory-level globs like "node_modules/**"
+        # Directory-level globs like "node_modules/**" or "src/node_modules/**"
         if "/**" in pattern:
-            dir_name = pattern.replace("/**", "")
-            if f"/{dir_name}/" in fp or fp.startswith(f"{dir_name}/"):
-                return True
+            base = pattern.split("/**", 1)[0].strip("/")
+            if base:
+                fp_parts = Path(fp).parts
+                base_parts = Path(base).parts
+                if len(base_parts) <= len(fp_parts):
+                    for i in range(len(fp_parts) - len(base_parts) + 1):
+                        if fp_parts[i : i + len(base_parts)] == base_parts:
+                            return True
     return False
 
 
