@@ -1,35 +1,42 @@
-# =============================================================================
-# AI MINDS — Dependencies
-# =============================================================================
-# Personal Cognitive Assistant
-# 100% local, open-source ONLY (NO OpenAI/Anthropic/Gemini/Grok APIs)
-# =============================================================================
+# MemoryGraph — Dependencies
+# 100% local, open-source ONLY
+# Status: RESEARCH PHASE — this is the planned stack, not yet installed
 
-# --- Core ---
+# --- Backend ---
 fastapi>=0.104.0
 uvicorn[standard]>=0.24.0
 pydantic>=2.0
 pydantic-settings>=2.0
-
-# --- Async HTTP (for Ollama client) ---
-httpx>=0.25.0
+httpx>=0.25.0                        # Ollama HTTP client
 
 # --- Vector DB ---
 qdrant-client>=1.7.0
 
 # --- Embeddings (local, 384-dim) ---
-sentence-transformers>=2.2.0        # all-MiniLM-L6-v2
+sentence-transformers>=2.2.0         # all-MiniLM-L6-v2
+
+# --- Knowledge Graph (SQLite + in-memory analysis) ---
+networkx>=3.0                        # Graph algorithms, subgraph traversal
+# SQLite is stdlib — no dependency needed
 
 # --- Document Processing ---
-PyPDF2>=3.0.0                        # PDF text extraction
+pymupdf>=1.23.0                      # PDF text extraction (better than PyPDF2)
 python-docx>=1.0.0                   # DOCX extraction
 Pillow>=10.0.0                       # Image loading
+pytesseract>=0.3.10                  # OCR for images with text
+
+# --- Audio Transcription ---
+faster-whisper>=0.10.0               # Whisper-tiny, 39M params, local
+
+# --- NLP (entity extraction) ---
+spacy>=3.7.0                         # Named entity recognition
+# Download model: python -m spacy download en_core_web_sm
 
 # --- File Watcher (auto-ingestion) ---
 watchdog>=3.0.0
 
-# --- OCR (optional — uncomment if Tesseract is installed) ---
-# pytesseract>=0.3.10
+# --- Background Tasks ---
+apscheduler>=3.10.0                  # Scheduled proactive insights
 
 # --- Utilities ---
 python-dotenv>=1.0.0
