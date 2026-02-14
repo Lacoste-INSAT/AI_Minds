@@ -1,0 +1,532 @@
+"""
+Hybrid Retriever
+================
+Three-path retrieval for comprehensive knowledge access:
+
+1. Dense (Qdrant): Semantic similarity via embeddings
+2. Sparse (BM25): Keyword matching for exact terms
+3. Graph (NetworkX): Relationship traversal for multi-hop
+
+Each path catches what others miss:
+- Dense: "similar concepts" even with different words
+- Sparse: Exact names, codes, numbers that embeddings miss
+- Graph: Relationships that flat retrieval can't represent
+"""
+
+import structlog
+from dataclasses import dataclass, field
+from typing import Optional, Any
+from datetime import datetime
+import numpy as np
+
+logger = structlog.get_logger(__name__)
+
+
+@dataclass
+class RetrievalResult:
+    """A single retrieved chunk/document."""
+    chunk_id: str
+    content: str
+    source_file: str
+    score: float  # Normalized 0-1
+    retrieval_path: str  # "dense" | "sparse" | "graph"
+    metadata: dict = field(default_factory=dict)
+    
+    # For citation rendering
+    @property
+    def citation_label(self) -> str:
+        """Short label for inline citation."""
+        filename = self.source_file.split("/")[-1].split("\\")[-1]
+        return filename[:30] + "..." if len(filename) > 30 else filename
+
+
+@dataclass
+class RetrievalBundle:
+    """Bundle of results from all retrieval paths."""
+    dense_results: list[RetrievalResult]
+    sparse_results: list[RetrievalResult]
+    graph_results: list[RetrievalResult]
+    query: str
+    
+    @property
+    def all_results(self) -> list[RetrievalResult]:
+        return self.dense_results + self.sparse_results + self.graph_results
+    
+    @property
+    def total_count(self) -> int:
+        return len(self.dense_results) + len(self.sparse_results) + len(self.graph_results)
+
+
+class DenseRetriever:
+    """
+    Semantic search using Qdrant vector database.
+    
+    Catches: Conceptually similar content even with different words.
+    Example: "budget planning" finds "financial allocation strategy"
+    """
+    
+    def __init__(self, qdrant_client, collection_name: str = "chunks"):
+        self.client = qdrant_client
+        self.collection_name = collection_name
+        self._embedder = None
+    
+    async def _get_embedder(self):
+        """Lazy-load sentence transformer."""
+        if self._embedder is None:
+            from sentence_transformers import SentenceTransformer
+            # all-MiniLM-L6-v2: 384-dim, fast, good quality
+            self._embedder = SentenceTransformer('all-MiniLM-L6-v2')
+        return self._embedder
+    
+    async def embed_query(self, query: str) -> list[float]:
+        """Embed query text."""
+        embedder = await self._get_embedder()
+        embedding = embedder.encode(query, normalize_embeddings=True)
+        return embedding.tolist()
+    
+    async def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        score_threshold: float = 0.3,
+        filter_conditions: Optional[dict] = None,
+    ) -> list[RetrievalResult]:
+        """
+        Semantic search in Qdrant.
+        
+        Args:
+            query: Search query text
+            top_k: Max results to return
+            score_threshold: Minimum similarity score (0-1)
+            filter_conditions: Qdrant filter dict
+            
+        Returns:
+            List of RetrievalResult sorted by relevance
+        """
+        try:
+            from qdrant_client.models import Filter, FieldCondition, MatchValue
+            
+            query_vector = await self.embed_query(query)
+            
+            # Build filter if provided
+            qdrant_filter = None
+            if filter_conditions:
+                conditions = []
+                for field, value in filter_conditions.items():
+                    conditions.append(FieldCondition(
+                        key=field,
+                        match=MatchValue(value=value)
+                    ))
+                qdrant_filter = Filter(must=conditions)
+            
+            results = self.client.search(
+                collection_name=self.collection_name,
+                query_vector=query_vector,
+                limit=top_k,
+                score_threshold=score_threshold,
+                query_filter=qdrant_filter,
+            )
+            
+            retrieval_results = []
+            for hit in results:
+                payload = hit.payload or {}
+                retrieval_results.append(RetrievalResult(
+                    chunk_id=str(hit.id),
+                    content=payload.get("content", ""),
+                    source_file=payload.get("source_file", "unknown"),
+                    score=hit.score,
+                    retrieval_path="dense",
+                    metadata={
+                        "created_at": payload.get("created_at"),
+                        "chunk_index": payload.get("chunk_index"),
+                        "entities": payload.get("entities", []),
+                    }
+                ))
+            
+            logger.debug("dense_search_complete", query=query[:50], count=len(retrieval_results))
+            return retrieval_results
+            
+        except Exception as e:
+            logger.error("dense_search_failed", error=str(e))
+            return []
+
+
+class SparseRetriever:
+    """
+    BM25 keyword search.
+    
+    Catches: Exact terms, names, codes that embeddings represent poorly.
+    Example: "Meeting with Sarah on 2026-02-10" - exact name and date
+    """
+    
+    def __init__(self, documents: Optional[list[dict]] = None):
+        """
+        Args:
+            documents: List of {"id": str, "content": str, "source_file": str, ...}
+        """
+        self.documents = documents or []
+        self._bm25 = None
+        self._tokenized_corpus = None
+    
+    def index(self, documents: list[dict]):
+        """Build BM25 index from documents."""
+        from rank_bm25 import BM25Okapi
+        
+        self.documents = documents
+        self._tokenized_corpus = [
+            self._tokenize(doc.get("content", "")) 
+            for doc in documents
+        ]
+        self._bm25 = BM25Okapi(self._tokenized_corpus)
+        
+        logger.info("bm25_index_built", doc_count=len(documents))
+    
+    def _tokenize(self, text: str) -> list[str]:
+        """Simple whitespace tokenization with lowercasing."""
+        import re
+        # Split on non-alphanumeric, lowercase, filter short tokens
+        tokens = re.findall(r'\b\w+\b', text.lower())
+        return [t for t in tokens if len(t) > 1]
+    
+    def search(
+        self,
+        query: str,
+        top_k: int = 5,
+        score_threshold: float = 0.0,
+    ) -> list[RetrievalResult]:
+        """
+        BM25 keyword search.
+        
+        Args:
+            query: Search query
+            top_k: Max results
+            score_threshold: Minimum BM25 score
+            
+        Returns:
+            List of RetrievalResult sorted by BM25 score
+        """
+        if not self._bm25 or not self.documents:
+            logger.warning("bm25_not_indexed")
+            return []
+        
+        try:
+            query_tokens = self._tokenize(query)
+            scores = self._bm25.get_scores(query_tokens)
+            
+            # Get top-k indices
+            top_indices = np.argsort(scores)[::-1][:top_k]
+            
+            results = []
+            for idx in top_indices:
+                score = scores[idx]
+                if score < score_threshold:
+                    continue
+                    
+                doc = self.documents[idx]
+                
+                # Normalize BM25 score to 0-1 range (approximate)
+                # BM25 scores can vary widely, so we use a sigmoid-like normalization
+                normalized_score = min(score / (score + 5.0), 1.0)
+                
+                results.append(RetrievalResult(
+                    chunk_id=doc.get("id", str(idx)),
+                    content=doc.get("content", ""),
+                    source_file=doc.get("source_file", "unknown"),
+                    score=normalized_score,
+                    retrieval_path="sparse",
+                    metadata={
+                        "bm25_raw_score": score,
+                        "created_at": doc.get("created_at"),
+                    }
+                ))
+            
+            logger.debug("sparse_search_complete", query=query[:50], count=len(results))
+            return results
+            
+        except Exception as e:
+            logger.error("sparse_search_failed", error=str(e))
+            return []
+
+
+class GraphRetriever:
+    """
+    Graph-based retrieval using NetworkX.
+    
+    Catches: Multi-hop relationships between entities.
+    Example: "What did Sarah say about the budget?" 
+    → Sarah --mentioned_in--> Doc1 --contains--> budget discussion
+    """
+    
+    def __init__(self, graph=None, sqlite_conn=None):
+        """
+        Args:
+            graph: NetworkX graph (or we build from SQLite)
+            sqlite_conn: SQLite connection for loading graph data
+        """
+        self.graph = graph
+        self.sqlite_conn = sqlite_conn
+    
+    def load_graph_from_sqlite(self, sqlite_path: str):
+        """Load entity graph from SQLite database."""
+        import sqlite3
+        import networkx as nx
+        
+        self.graph = nx.DiGraph()
+        
+        try:
+            conn = sqlite3.connect(sqlite_path)
+            cursor = conn.cursor()
+            
+            # Load nodes (entities)
+            cursor.execute("""
+                SELECT id, name, entity_type, metadata 
+                FROM entities
+            """)
+            for row in cursor.fetchall():
+                self.graph.add_node(
+                    row[0],
+                    name=row[1],
+                    entity_type=row[2],
+                    metadata=row[3]
+                )
+            
+            # Load edges (relationships)
+            cursor.execute("""
+                SELECT source_id, target_id, relationship_type, metadata
+                FROM relationships
+            """)
+            for row in cursor.fetchall():
+                self.graph.add_edge(
+                    row[0], row[1],
+                    rel_type=row[2],
+                    metadata=row[3]
+                )
+            
+            conn.close()
+            logger.info("graph_loaded", nodes=self.graph.number_of_nodes(), 
+                       edges=self.graph.number_of_edges())
+            
+        except Exception as e:
+            logger.error("graph_load_failed", error=str(e))
+            self.graph = nx.DiGraph()
+    
+    def search(
+        self,
+        entity_names: list[str],
+        max_hops: int = 3,
+        top_k: int = 10,
+    ) -> list[RetrievalResult]:
+        """
+        Find paths between entities and retrieve connected chunks.
+        
+        Args:
+            entity_names: List of entity names to connect
+            max_hops: Maximum traversal depth
+            top_k: Max results to return
+            
+        Returns:
+            List of RetrievalResult from graph traversal
+        """
+        import networkx as nx
+        
+        if not self.graph or self.graph.number_of_nodes() == 0:
+            logger.warning("graph_empty")
+            return []
+        
+        try:
+            # Find entity nodes by name (case-insensitive)
+            entity_ids = []
+            for name in entity_names:
+                for node_id, data in self.graph.nodes(data=True):
+                    if data.get("name", "").lower() == name.lower():
+                        entity_ids.append(node_id)
+                        break
+            
+            if len(entity_ids) < 1:
+                logger.debug("no_entities_found_in_graph", names=entity_names)
+                return []
+            
+            # Collect all related nodes within max_hops
+            related_nodes = set()
+            
+            for entity_id in entity_ids:
+                # BFS to find nearby nodes
+                for neighbor in nx.single_source_shortest_path_length(
+                    self.graph, entity_id, cutoff=max_hops
+                ):
+                    related_nodes.add(neighbor)
+            
+            # If multiple entities, find paths between them
+            path_nodes = set()
+            if len(entity_ids) >= 2:
+                for i, source in enumerate(entity_ids[:-1]):
+                    for target in entity_ids[i+1:]:
+                        try:
+                            paths = list(nx.all_simple_paths(
+                                self.graph, source, target, cutoff=max_hops
+                            ))
+                            for path in paths[:5]:  # Limit paths
+                                path_nodes.update(path)
+                        except nx.NetworkXNoPath:
+                            pass
+            
+            # Combine and get chunk references from nodes
+            all_nodes = related_nodes | path_nodes
+            
+            results = []
+            for node_id in list(all_nodes)[:top_k]:
+                node_data = self.graph.nodes.get(node_id, {})
+                
+                # Get chunks connected to this entity
+                chunk_refs = node_data.get("chunk_ids", [])
+                if isinstance(chunk_refs, str):
+                    chunk_refs = [chunk_refs]
+                
+                for chunk_id in chunk_refs:
+                    # Calculate score based on distance from query entities
+                    min_dist = min(
+                        nx.shortest_path_length(self.graph, eid, node_id)
+                        for eid in entity_ids
+                        if nx.has_path(self.graph, eid, node_id)
+                    ) if entity_ids else max_hops
+                    
+                    # Score inversely proportional to distance
+                    score = 1.0 / (1.0 + min_dist)
+                    
+                    results.append(RetrievalResult(
+                        chunk_id=chunk_id,
+                        content=node_data.get("content", f"Entity: {node_data.get('name', 'unknown')}"),
+                        source_file=node_data.get("source_file", "graph"),
+                        score=score,
+                        retrieval_path="graph",
+                        metadata={
+                            "entity_name": node_data.get("name"),
+                            "entity_type": node_data.get("entity_type"),
+                            "hop_distance": min_dist,
+                            "connected_entities": [
+                                self.graph.nodes[n].get("name") 
+                                for n in self.graph.neighbors(node_id)
+                            ][:5]
+                        }
+                    ))
+            
+            # Dedupe by chunk_id, keep highest score
+            seen = {}
+            for r in results:
+                if r.chunk_id not in seen or r.score > seen[r.chunk_id].score:
+                    seen[r.chunk_id] = r
+            
+            results = sorted(seen.values(), key=lambda x: x.score, reverse=True)[:top_k]
+            logger.debug("graph_search_complete", entities=entity_names, count=len(results))
+            return results
+            
+        except Exception as e:
+            logger.error("graph_search_failed", error=str(e))
+            return []
+
+
+class HybridRetriever:
+    """
+    Orchestrates all three retrieval paths.
+    
+    Usage:
+        retriever = HybridRetriever(qdrant_client, bm25_docs, graph)
+        results = await retriever.search(
+            query="What did Sarah say about the budget?",
+            entities=["Sarah", "budget"],
+            dense_k=5,
+            sparse_k=3,
+            graph_hops=2
+        )
+    """
+    
+    def __init__(
+        self,
+        qdrant_client=None,
+        documents: Optional[list[dict]] = None,
+        graph=None,
+        collection_name: str = "chunks",
+    ):
+        self.dense = DenseRetriever(qdrant_client, collection_name) if qdrant_client else None
+        self.sparse = SparseRetriever(documents) if documents else SparseRetriever()
+        self.graph = GraphRetriever(graph)
+        
+        # Index BM25 if documents provided
+        if documents:
+            self.sparse.index(documents)
+    
+    def update_bm25_index(self, documents: list[dict]):
+        """Update BM25 index with new documents."""
+        self.sparse.index(documents)
+    
+    def update_graph(self, graph):
+        """Update the NetworkX graph."""
+        self.graph.graph = graph
+    
+    async def search(
+        self,
+        query: str,
+        entities: Optional[list[str]] = None,
+        dense_k: int = 5,
+        sparse_k: int = 3,
+        graph_hops: int = 0,
+        dense_threshold: float = 0.3,
+        sparse_threshold: float = 0.0,
+    ) -> RetrievalBundle:
+        """
+        Run all retrieval paths and return combined results.
+        
+        Args:
+            query: Search query text
+            entities: Entity names for graph traversal
+            dense_k: Number of dense results
+            sparse_k: Number of sparse results
+            graph_hops: Max graph traversal depth (0 = skip graph)
+            dense_threshold: Min score for dense results
+            sparse_threshold: Min score for sparse results
+            
+        Returns:
+            RetrievalBundle with results from all paths
+        """
+        dense_results = []
+        sparse_results = []
+        graph_results = []
+        
+        # Dense retrieval (async)
+        if self.dense and dense_k > 0:
+            dense_results = await self.dense.search(
+                query=query,
+                top_k=dense_k,
+                score_threshold=dense_threshold,
+            )
+        
+        # Sparse retrieval (sync, but fast)
+        if sparse_k > 0:
+            sparse_results = self.sparse.search(
+                query=query,
+                top_k=sparse_k,
+                score_threshold=sparse_threshold,
+            )
+        
+        # Graph retrieval (if entities provided and hops > 0)
+        if graph_hops > 0 and entities:
+            graph_results = self.graph.search(
+                entity_names=entities,
+                max_hops=graph_hops,
+                top_k=dense_k + sparse_k,  # Get more for fusion
+            )
+        
+        logger.info(
+            "hybrid_retrieval_complete",
+            query=query[:50],
+            dense_count=len(dense_results),
+            sparse_count=len(sparse_results),
+            graph_count=len(graph_results),
+        )
+        
+        return RetrievalBundle(
+            dense_results=dense_results,
+            sparse_results=sparse_results,
+            graph_results=graph_results,
+            query=query,
+        )
