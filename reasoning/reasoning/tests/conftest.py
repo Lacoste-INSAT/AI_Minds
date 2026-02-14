@@ -111,9 +111,10 @@ def mock_ollama_response():
 @pytest.fixture
 def mock_ollama_client(mock_ollama_response):
     """Mock Ollama client for testing without actual LLM calls."""
-    with patch("backend.reasoning.cpumodel.ollama_client.httpx.AsyncClient") as mock:
+    with patch("reasoning.reasoning.cpumodel.ollama_client.httpx.AsyncClient") as mock:
         client_instance = AsyncMock()
-        mock.return_value.__aenter__.return_value = client_instance
+        client_instance.aclose = AsyncMock()
+        mock.return_value = client_instance
         
         # Mock health check
         health_response = MagicMock()

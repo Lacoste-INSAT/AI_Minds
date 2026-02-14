@@ -130,8 +130,9 @@ def fuse_results(
         
         # Apply recency weighting if enabled
         # Note: Would need timestamp from chunk metadata
-        # For now, we'll use a neutral factor
-        recency_factor = 1.0  # TODO: Get timestamp from chunk metadata
+        # Using neutral factor (0.5) consistent with _compute_recency_factor
+        # to avoid inflating scores until timestamps are available
+        recency_factor = 0.5  # TODO: Get timestamp from chunk metadata
         
         if apply_recency:
             final_score = (1 - RECENCY_WEIGHT) * relevance_score + RECENCY_WEIGHT * recency_factor

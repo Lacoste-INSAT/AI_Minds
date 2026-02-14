@@ -123,40 +123,53 @@ class SparseRetriever:
         self._chunk_ids = None
     
     async def _load_corpus(self):
-        """Load corpus from SQLite for BM25 indexing."""
+        """Load corpus from SQLite for BM25 indexing without blocking the event loop."""
         if self._bm25 is not None:
             return
-        
-        try:
-            import sqlite3
-            from rank_bm25 import BM25Okapi
-            
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.execute(
-                "SELECT id, document_id, content FROM chunks WHERE content IS NOT NULL"
-            )
-            
-            self._corpus = []
-            self._chunk_ids = []
-            chunk_data = []
-            
-            for row in cursor:
-                chunk_id, doc_id, content = row
-                # Tokenize for BM25
-                tokens = content.lower().split()
-                self._corpus.append(tokens)
-                self._chunk_ids.append((chunk_id, doc_id, content))
-            
-            conn.close()
-            
-            if self._corpus:
-                self._bm25 = BM25Okapi(self._corpus)
-                logger.info(f"BM25 index built with {len(self._corpus)} chunks")
-            else:
-                logger.warning("No chunks found for BM25 indexing")
-                
-        except Exception as e:
-            logger.error(f"Failed to load BM25 corpus: {e}")
+
+        def _build_corpus_and_index():
+            """Synchronous helper to load chunks and build the BM25 index."""
+            try:
+                import sqlite3
+                from rank_bm25 import BM25Okapi
+
+                conn = sqlite3.connect(self.db_path)
+                try:
+                    cursor = conn.execute(
+                        "SELECT id, document_id, content FROM chunks WHERE content IS NOT NULL"
+                    )
+
+                    corpus = []
+                    chunk_ids = []
+
+                    for row in cursor:
+                        chunk_id, doc_id, content = row
+                        # Tokenize for BM25
+                        tokens = content.lower().split()
+                        corpus.append(tokens)
+                        chunk_ids.append((chunk_id, doc_id, content))
+
+                    if corpus:
+                        bm25 = BM25Okapi(corpus)
+                        logger.info(f"BM25 index built with {len(corpus)} chunks")
+                    else:
+                        bm25 = None
+                        logger.warning("No chunks found for BM25 indexing")
+
+                    return corpus, chunk_ids, bm25
+                finally:
+                    conn.close()
+            except Exception as e:
+                logger.error(f"Failed to load BM25 corpus: {e}")
+                return None, None, None
+
+        corpus, chunk_ids, bm25 = await asyncio.to_thread(_build_corpus_and_index)
+
+        # Only update state if the index was successfully built
+        if corpus is not None and bm25 is not None:
+            self._corpus = corpus
+            self._chunk_ids = chunk_ids
+            self._bm25 = bm25
     
     async def retrieve(self, query: str, top_k: int = DEFAULT_TOP_K) -> RetrievalResult:
         """Search using BM25 keyword matching."""
@@ -222,37 +235,57 @@ class GraphRetriever:
         self._graph = None
     
     async def _load_graph(self):
-        """Load graph from SQLite into NetworkX."""
+        """Load graph from SQLite into NetworkX without blocking the event loop."""
         if self._graph is not None:
             return
-        
-        try:
+
+        def _build_graph():
+            """Synchronous helper to build the graph; run in a thread."""
             import sqlite3
             import networkx as nx
-            
-            self._graph = nx.DiGraph()
-            
-            conn = sqlite3.connect(self.db_path)
-            
-            # Load nodes
-            cursor = conn.execute("SELECT id, type, name, source_chunks FROM nodes")
-            for row in cursor:
-                node_id, node_type, name, source_chunks = row
-                self._graph.add_node(node_id, type=node_type, name=name, source_chunks=source_chunks)
-            
-            # Load edges
-            cursor = conn.execute("SELECT source_id, target_id, relationship, source_chunk FROM edges")
-            for row in cursor:
-                source_id, target_id, relationship, source_chunk = row
-                self._graph.add_edge(source_id, target_id, relationship=relationship, source_chunk=source_chunk)
-            
-            conn.close()
-            logger.info(f"Graph loaded: {self._graph.number_of_nodes()} nodes, {self._graph.number_of_edges()} edges")
-            
-        except Exception as e:
-            logger.error(f"Failed to load graph: {e}")
-            import networkx as nx
-            self._graph = nx.DiGraph()  # Empty graph fallback
+
+            try:
+                graph = nx.DiGraph()
+
+                # Use a small timeout so a locked DB doesn't block indefinitely
+                conn = sqlite3.connect(self.db_path, timeout=5.0)
+                try:
+                    # Load nodes
+                    cursor = conn.execute("SELECT id, type, name, source_chunks FROM nodes")
+                    for row in cursor:
+                        node_id, node_type, name, source_chunks = row
+                        graph.add_node(
+                            node_id,
+                            type=node_type,
+                            name=name,
+                            source_chunks=source_chunks,
+                        )
+
+                    # Load edges
+                    cursor = conn.execute("SELECT source_id, target_id, relationship, source_chunk FROM edges")
+                    for row in cursor:
+                        source_id, target_id, relationship, source_chunk = row
+                        graph.add_edge(
+                            source_id,
+                            target_id,
+                            relationship=relationship,
+                            source_chunk=source_chunk,
+                        )
+                finally:
+                    conn.close()
+
+                logger.info(
+                    "Graph loaded: %d nodes, %d edges",
+                    graph.number_of_nodes(),
+                    graph.number_of_edges(),
+                )
+                return graph
+            except Exception as e:
+                logger.error(f"Failed to load graph: {e}")
+                return nx.DiGraph()  # Empty graph fallback
+
+        # Run blocking SQLite and graph construction work in a separate thread
+        self._graph = await asyncio.to_thread(_build_graph)
     
     async def retrieve(
         self, 
