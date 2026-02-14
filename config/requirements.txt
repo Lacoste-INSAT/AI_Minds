@@ -49,3 +49,6 @@ structlog>=24.4
 
 # === WebSocket (included with uvicorn[standard]) ===
 websockets>=14.0
+
+# === Monitoring file system events ===
+watchdog >=2.1.0
