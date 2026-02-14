@@ -32,6 +32,12 @@ class RateLimiter:
         with self._lock:
             now = time.monotonic()
             elapsed = now - self._last
-            if elapsed < self._interval:
-                time.sleep(self._interval - elapsed)
-            self._last = time.monotonic()
+            sleep_for = self._interval - elapsed
+            if sleep_for > 0:
+                # Advance _last by the intended interval to avoid drift
+                # from scheduler delays.
+                self._last = now + sleep_for
+                time.sleep(sleep_for)
+            else:
+                # No wait needed; consume a token at the current time.
+                self._last = now

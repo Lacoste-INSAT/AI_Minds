@@ -1,5 +1,6 @@
 """Configuration loading, saving, and directory resolution."""
 
+import copy
 import os
 import json
 import logging
@@ -17,20 +18,26 @@ def load_config() -> Dict[str, Any]:
         try:
             with open(CONFIG_PATH, "r", encoding="utf-8") as f:
                 user_cfg = json.load(f)
-            merged = {**DEFAULT_CONFIG, **user_cfg}
+            # Deep-copy defaults so callers cannot mutate module-level state
+            merged = copy.deepcopy(DEFAULT_CONFIG)
+            merged.update(user_cfg)
             logger.info("Config loaded from %s", CONFIG_PATH)
             return merged
         except (json.JSONDecodeError, OSError) as exc:
             logger.warning("Bad config file, using defaults: %s", exc)
-    return DEFAULT_CONFIG.copy()
+    return copy.deepcopy(DEFAULT_CONFIG)
 
 
 def save_config(cfg: Dict[str, Any]) -> None:
     """Persist config to disk."""
-    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, indent=2)
-    logger.info("Config saved to %s", CONFIG_PATH)
+    try:
+        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, indent=2)
+    except OSError as exc:
+        logger.error("Failed to save config to %s: %s", CONFIG_PATH, exc)
+    else:
+        logger.info("Config saved to %s", CONFIG_PATH)
 
 
 def resolve_directories(raw_dirs: List[str]) -> List[Path]:

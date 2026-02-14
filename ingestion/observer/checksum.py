@@ -49,10 +49,18 @@ class ChecksumStore:
                 self._data = {}
 
     def save(self) -> None:
-        CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        try:
+            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            logger.exception("Failed to create config directory %s for checksum store", CONFIG_DIR)
+            return
+
         with self._lock:
-            with open(self._path, "w", encoding="utf-8") as f:
-                json.dump(self._data, f)
+            try:
+                with open(self._path, "w", encoding="utf-8") as f:
+                    json.dump(self._data, f)
+            except OSError:
+                logger.exception("Failed to save checksum store to %s", self._path)
 
     def get(self, filepath: str) -> Optional[str]:
         with self._lock:
