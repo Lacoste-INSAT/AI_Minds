@@ -21,7 +21,7 @@ It connects ideas across documents, tracks how your thinking changes over time, 
 
 | | |
 |---|---|
-| **LLM** | Phi-4-mini-instruct (3.8B) via Ollama, Qwen2.5-3B fallback |
+| **LLM** | Phi-4-mini-instruct (3.8B, MIT) via Ollama — 3 tiers: T1 phi4-mini, T2 qwen2.5:3b, T3 qwen2.5:0.5b |
 | **Ingestion** | **Zero-touch** — auto-watches user directories, no upload |
 | **Network** | **Air-gapped** — zero internet, localhost-only (127.0.0.1) |
 | **Embeddings** | all-MiniLM-L6-v2 (384-dim, local) |
@@ -37,7 +37,7 @@ It connects ideas across documents, tracks how your thinking changes over time, 
 
 | Document | Purpose |
 |---|---|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | Canonical full architecture spec (18 sections, v3.0) |
+| [ARCHITECTURE.md](ARCHITECTURE.md) | Canonical full architecture spec (18 sections, v4.1) |
 | [ARCHITECTURE-OLD.md](ARCHITECTURE-OLD.md) | Legacy MemoryGraph architecture (pre-Synapsis, for reference) |
 | [RESEARCH.md](RESEARCH.md) | Open questions to resolve before coding |
 
@@ -49,7 +49,7 @@ It connects ideas across documents, tracks how your thinking changes over time, 
 | Zero internet at runtime | ✅ `network_mode: none`, 127.0.0.1 binding |
 | Zero manual ingestion | ✅ Auto-watch directories, no upload buttons |
 | LLM < 4B parameters | ✅ Phi-4-mini = 3.8B params |
-| Open-source model | ✅ MIT license |
+| Open-source model | ✅ MIT license (T1), Qwen License (T2), Apache 2.0 (T3) |
 | Local embeddings | ✅ sentence-transformers, no API |
 | Local vector DB | ✅ Qdrant on-disk |
 | Continuous operation | ✅ Background watcher + persistent store |

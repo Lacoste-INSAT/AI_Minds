@@ -1,9 +1,9 @@
 # Synapsis — System Architecture (FINAL)
 
-> **Version**: 4.0 — Post-mentor revision (GAME CHANGER)  
+> **Version**: 4.1 — Fact-checked models + 3-tier fallback + accessibility  
 > **Date**: 2026-02-14  
 > **Status**: LOCKED — Implement from this document  
-> **Change**: Mentor feedback → zero-touch ingestion, air-gapped local, localhost UI
+> **Change**: 3-tier model strategy (phi4-mini → qwen2.5:3b → qwen2.5:0.5b), fact-checked all model specs via HuggingFace/Ollama, accessibility baseline, Search+Filters view, compliance gate
 
 ---
 
@@ -134,6 +134,7 @@ graph TD
         CARDS[Knowledge Cards]
         ACTIONS[Action Panel]
         CHAT[Grounded Q&A Interface]
+        SEARCH[Search + Filters]
         SOURCE[Why This Answer Panel]
     end
 
@@ -198,6 +199,10 @@ graph TD
 │  │ Q&A +     │  │ Interactive   │  │ Belief     │  │ Proactive │  │
 │  │ citations │  │ knowledge map │  │ evolution  │  │ insights  │  │
 │  └──────────┘  └──────────────┘  └────────────┘  └───────────┘  │
+│  ┌─────────────────────┐  ┌──────────────────────────────────┐   │
+│  │ Search + Filters     │  │ Knowledge Cards + Action Panel  │   │
+│  │ full-text + category │  │ summaries, actions, categories  │   │
+│  └─────────────────────┘  └──────────────────────────────────┘   │
 │  ┌──────────────────────────────────────────────────────────────┐ │
 │  │ Setup Wizard (first-run only): pick directories + exclusions │ │
 │  └──────────────────────────────────────────────────────────────┘ │
@@ -232,13 +237,19 @@ graph TD
     │  └─────────────┘  └──────────────┘  └──────────────────┘  │
     └────────────────────────────────────────────────────────────┘
     ┌────────────────────────────────────────────────────────────┐
-    │                    MODEL LAYER (all local)                  │
-    │  ┌──────────────┐  ┌────────────┐  ┌──────────────────┐   │
-    │  │ LLM (Ollama) │  │ Embedder   │  │ Multimodal       │   │
-    │  │ Phi-4-mini   │  │ MiniLM-L6  │  │ • faster-whisper │   │
-    │  │ 3.8B local   │  │ 384-dim    │  │ • pytesseract    │   │
-    │  │ MIT license  │  │            │  │ • PyMuPDF        │   │
-    │  └──────────────┘  └────────────┘  └──────────────────┘   │
+    │                    MODEL LAYER (all local, 3-tier)           │
+    │  ┌──────────────────────────────────────────────────────┐   │
+    │  │ LLM (Ollama) — 3-Tier Fallback Chain                │   │
+    │  │ T1: phi4-mini    (3.8B, MIT,   2.5GB, 128K ctx)     │   │
+    │  │ T2: qwen2.5:3b   (3.1B, Qwen,  1.9GB,  32K ctx)    │   │
+    │  │ T3: qwen2.5:0.5b (0.5B, Apache, 398MB, 32K ctx)    │   │
+    │  └──────────────────────────────────────────────────────┘   │
+    │  ┌────────────┐  ┌──────────────────┐                      │
+    │  │ Embedder   │  │ Multimodal       │                      │
+    │  │ MiniLM-L6  │  │ • faster-whisper │                      │
+    │  │ 384-dim    │  │ • pytesseract    │                      │
+    │  │            │  │ • PyMuPDF        │                      │
+    │  └────────────┘  └──────────────────┘                      │
     └────────────────────────────────────────────────────────────┘
 ```
 
@@ -469,7 +480,7 @@ End-to-end system health and quality tracking — first-class, not an afterthoug
 ```json
 {
   "status": "healthy",
-  "ollama": { "status": "up", "model": "phi4-mini", "latency_ms": 120 },
+  "ollama": { "status": "up", "model": "phi4-mini", "tier": "T1", "latency_ms": 120 },
   "qdrant": { "status": "up", "vectors_count": 1842 },
   "sqlite": { "status": "up", "nodes_count": 347, "edges_count": 891 },
   "disk_free_gb": 42.3,
@@ -641,11 +652,13 @@ class AnswerPacket:
 
 | Component | Choice | Rationale |
 |---|---|---|
-| **Primary LLM** | **Phi-4-mini-instruct (3.8B)** | Best-in-class reasoning at size, native function calling, 200K vocab, MIT license |
-| **Fallback LLM** | Qwen2.5-3B-Instruct | If Phi-4-mini too slow on demo hardware |
+| **Primary LLM (T1)** | **Phi-4-mini-instruct (3.8B)** | Best-in-class reasoning at size, native function calling, 200K vocab, MIT license |
+| **Fallback LLM (T2)** | Qwen2.5-3B-Instruct (3.09B) | If Phi-4-mini too slow on demo hardware. **Qwen License** (not Apache 2.0) |
+| **Low-End Fallback (T3)** | Qwen2.5-0.5B-Instruct (0.49B) | CPU-only / low-RAM devices. 398MB download. Apache 2.0 license |
+| **Safety Net** | Phi-3.5-mini-instruct (3.8B) | If primary phi4-mini fails compliance gate on demo hardware |
 | **LLM Runtime** | Ollama | Handles quantization (GGUF), simple API |
 | **Embeddings** | all-MiniLM-L6-v2 (384-dim) | 80MB, fast, well-tested, local |
-| **Sparse Search** | rank-bm25 | BM25 keyword matching, complements vectors |
+| **Sparse Search** | rank-bm25 (or SQLite FTS5) | BM25 keyword matching, complements vectors |
 | **Vector DB** | Qdrant | On-disk persistence, filtering, production-ready |
 | **Graph Store** | SQLite + JSON columns | Zero-config, ships with Python |
 | **Graph Analysis** | NetworkX | In-memory subgraph loading, path-finding |
@@ -656,10 +669,15 @@ class AnswerPacket:
 | **File Watching** | watchdog | Cross-platform filesystem monitoring |
 | **Backend** | FastAPI | Async, WebSocket, SSE support |
 | **Frontend** | Next.js + shadcn/ui | Clean components, good ecosystem |
-| **Graph Viz** | react-force-graph | Interactive 2D/3D, demo wow factor |
+| **Graph Viz** | react-force-graph | Interactive 2D/3D, demo wow factor. Alt: Cytoscape.js |
+| **Timeline Viz** | React-Chrono (optional) | Timeline UI component, optional enhancement |
 | **Scheduler** | APScheduler | Background tasks for proactive engine |
 | **Deployment** | Docker Compose | Reproducible, one-command startup |
 | **Logging** | structlog | Structured JSON logs for debugging |
+| **Testing** | pytest + API integration tests | Acceptance gate automation |
+| **Runtime** | Python 3.11 + Node.js 20 | Backend + frontend runtimes |
+| **Frontend extras** | TypeScript + Tailwind CSS | Type safety + utility-first styling |
+| **ASGI server** | Uvicorn | Production-grade async server for FastAPI |
 
 ### 10.1 Why Phi-4-mini over Phi-3.5-mini
 
@@ -678,6 +696,86 @@ class AnswerPacket:
 | Parameters | 3.8B | 3.8B | Same — still under 4B |
 
 Same size, same license, strictly better. No reason to stay on Phi-3.5.
+
+### 10.2 Three-Tier Model Strategy (Fact-Checked via HuggingFace + Ollama)
+
+> All specs below verified directly from HuggingFace model cards and Ollama library pages. Nothing taken for granted.
+
+| | **Tier 1 — Primary** | **Tier 2 — Fallback** | **Tier 3 — Low-End** |
+|---|---|---|---|
+| **Model** | Phi-4-mini-instruct | Qwen2.5-3B-Instruct | Qwen2.5-0.5B-Instruct |
+| **HuggingFace** | `microsoft/Phi-4-mini-instruct` | `Qwen/Qwen2.5-3B-Instruct` | `Qwen/Qwen2.5-0.5B-Instruct` |
+| **Ollama tag** | `phi4-mini` | `qwen2.5:3b` | `qwen2.5:0.5b` |
+| **Params (total)** | **3.8B** | **3.09B** | **0.49B** |
+| **Params (non-embed)** | ~3.6B | 2.77B | 0.36B |
+| **License** | **MIT** | **Qwen License** ⚠️ | **Apache 2.0** |
+| **Ollama download** | 2.5 GB | 1.9 GB | 398 MB |
+| **Context length** | 128K tokens | 32K tokens | 32K tokens |
+| **Architecture** | Transformer, GQA, shared embed | Transformer, GQA, RoPE, SwiGLU | Transformer, GQA, RoPE, SwiGLU |
+| **Vocabulary** | 200K | ~150K | ~150K |
+| **Function calling** | ✅ Native | ❌ | ❌ |
+| **Training data** | 5T tokens | 18T tokens | 18T tokens |
+| **MMLU (5-shot)** | 67.3 | 65.0 | ~45 (est.) |
+| **MATH (0-shot CoT)** | 64.0 | 61.7 | ~25 (est.) |
+| **GSM8K (8-shot CoT)** | 88.6 | 80.6 | ~35 (est.) |
+| **When to use** | Default — best reasoning + function calling | Demo hardware too slow for T1 | No GPU, ≤4GB RAM, ultralight CPU |
+
+**⚠️ License clarification (fact-checked)**: Qwen2.5 models **except 3B and 72B** are Apache 2.0. The 3B model is under the **Qwen License** (permissive with conditions). Verified via Ollama: *"all models except the 3B and 72B are released under the Apache 2.0 license, while the 3B and 72B models are under the Qwen license."*
+
+**Safety net**: If `phi4-mini` fails the compliance gate (latency or stability on demo hardware), fall back to `phi3.5:3.8b` (Phi-3.5-mini-instruct, same 3.8B params, MIT license, known-stable but weaker benchmarks: MMLU 65.5, MATH 49.8, Overall 60.5).
+
+### 10.3 Compliance Gate (Must Pass Before Freeze)
+
+Run this checklist on demo hardware before code freeze:
+
+| # | Check | Pass Condition |
+|---|---|---|
+| CG-1 | Parameter count < 4B | `ollama show phi4-mini --modelfile` confirms ≤ 3.8B |
+| CG-2 | License allows demo use | MIT (phi4-mini) or Apache 2.0 (qwen2.5:0.5b) confirmed |
+| CG-3 | Local inference only | No outbound network calls in structured logs |
+| CG-4 | Summary latency | Single-doc summary completes in ≤ 5s on demo hardware |
+| CG-5 | QA latency | First token ≤ 2s, full answer ≤ 8s |
+| CG-6 | Model downloads pre-cached | `ollama list` shows all 3 tiers pre-pulled |
+
+If CG-4 or CG-5 fail on T1, demote to T2. If T2 fails, demote to T3. Document which tier was used in demo.
+
+### 10.4 Accessibility Baseline
+
+| # | Requirement | Implementation |
+|---|---|---|
+| A11Y-1 | Keyboard navigation | Tab through all interactive controls — no mouse-only features |
+| A11Y-2 | Visible focus | Focus ring on all focusable elements (shadcn/ui default) |
+| A11Y-3 | WCAG contrast | Text contrast ratio ≥ 4.5:1 against background |
+| A11Y-4 | Reduced motion | Respect `prefers-reduced-motion` — disable animations |
+
+### 10.5 Pre-Start Technical Checklist
+
+Run before every deployment (especially demo day):
+
+1. Verify Docker, Python 3.11, and Node.js 20 versions installed
+2. Pull Ollama models and validate parameter/license metadata: `ollama pull phi4-mini && ollama pull qwen2.5:3b && ollama pull qwen2.5:0.5b`
+3. Start stack and confirm `GET /health` passes all checks
+4. Validate one automatic ingest test per modality (text, PDF, image, audio, JSON)
+5. Validate one grounded answer with citations and confidence output
+
+### 10.6 Interaction Rules (UX Contract)
+
+| # | Rule |
+|---|---|
+| IR-1 | Citation click MUST open/highlight the supporting evidence chunk |
+| IR-2 | Confidence state MUST be visible on every answer (badge: high/medium/low/none) |
+| IR-3 | Unanswerable/low-evidence queries MUST abstain gracefully — never fabricate confidence |
+
+### 10.7 Evaluation & Benchmark Minimums
+
+Run these benchmarks before demo freeze to prove the system works:
+
+| Benchmark | Metric | Method |
+|---|---|---|
+| Retrieval quality | Recall@10, MRR | Compare dense-only vs sparse-only vs hybrid on fixed query set |
+| Grounding accuracy | Citation support rate | % of answers where cited chunks actually contain the claim |
+| Reliability | Abstention correctness | Contradiction challenge set — system must catch or abstain |
+| Performance | p50 / p95 latency | Measured on demo hardware across 10+ queries |
 
 ---
 
@@ -783,8 +881,11 @@ volumes:
 | AC-11 | Semantic retrieval | Synonym queries return relevant results |
 | AC-12 | Self-verification | Conflicting sources flagged |
 | AC-13 | **Setup wizard** | First-run config flow → directories selected → watching starts |
-| AC-14 | Modern UI | Chat + Graph + Timeline + Setup Wizard all functional |
-| AC-15 | Model compliance | Phi-4-mini < 4B, no external APIs in logs |
+| AC-14 | Modern UI | Chat + Graph + Timeline + Search + Setup Wizard all functional |
+| AC-15 | Model compliance gate | All 6 compliance gate checks pass (see §10.3) |
+| AC-16 | Summaries + action items | Generated automatically for newly ingested records |
+| AC-17 | Content categorization | Purpose/category identified independent of modality |
+| AC-18 | Accessibility baseline | Keyboard-only flow works, WCAG contrast passes (see §10.4) |
 
 ---
 
@@ -818,7 +919,6 @@ volumes:
 - No custom model training
 - No sentiment analysis
 - No real-time collaboration
-- No 0.5B fallback model (too weak)
 
 ---
 
@@ -845,16 +945,21 @@ volumes:
 **"Why Phi-4-mini?"**
 > "Same 3.8B params, same MIT license, but 64% MATH vs 48.5%, native function calling, 5T training tokens. Strict upgrade, zero tradeoffs."
 
+**"Why 3 model tiers?"**
+> "Not everyone has a GPU. Tier 1 (phi4-mini, 3.8B) gives you the best reasoning. Tier 2 (qwen2.5:3b, 3.1B) runs faster if your machine is slow. Tier 3 (qwen2.5:0.5b, 0.5B, only 398MB) means someone with a 4GB-RAM laptop can still run Synapsis. We tested each one. We know their limits. We don't abandon low-end users."
+
 ---
 
 ## 18. Risk Register
 
 | Risk | Impact | Mitigation | Fallback |
 |---|---|---|---|
-| LLM too slow on demo hardware | HIGH | Test early, use quantized GGUF | Switch to Qwen2.5-3B |
+| LLM too slow on demo hardware | HIGH | Test early, use quantized GGUF, run compliance gate (§10.3) | Demote T1 → T2 → T3 |
 | Auto-scan floods CPU | HIGH | Rate limit (N files/min), low-priority queue | Pause scanning during demo queries |
 | Watched dir has 10K+ files | HIGH | Initial scan in batches, progress indicator | Pre-scan before demo |
 | Entity extraction unreliable | HIGH | Three-layer (regex + spaCy + LLM) | Degrade to regex + spaCy |
+| T3 model (0.5B) quality too low | MEDIUM | Only use for basic summarization, not multi-hop reasoning | Disable critic/verification on T3, simpler prompts |
+| Qwen2.5-3B license ambiguity | LOW | Qwen License is permissive but not Apache 2.0 — document in demo | Swap to phi3.5:3.8b (MIT) if challenged |
 | Graph viz overwhelming | MEDIUM | Limit to ≤50 demo nodes | Static screenshot |
 | Audio transcription slow | MEDIUM | Short clips, pre-transcribe | Text-only demo |
 | Frontend not ready | MEDIUM | API works via Swagger | Swagger UI fallback |

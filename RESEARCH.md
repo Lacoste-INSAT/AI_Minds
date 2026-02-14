@@ -30,8 +30,11 @@
 ## RQ-1: Which LLM? (CRITICAL — Resolve first)
 
 **Primary candidate**: Phi-4-mini-instruct (3.8B, MIT license)  
-**Fallback candidate**: Qwen2.5-3B-Instruct (3B, Apache 2.0)  
-**DO NOT USE**: qwen2.5:0.5b — too weak for entity extraction, QA, or verification. Will produce garbage.
+**Fallback candidate (T2)**: Qwen2.5-3B-Instruct (3.09B, **Qwen License** — NOT Apache 2.0)  
+**Low-end fallback (T3)**: Qwen2.5-0.5B-Instruct (0.49B, Apache 2.0) — for weak CPU/RAM devices, 398MB download  
+**Safety net**: Phi-3.5-mini-instruct (3.8B, MIT) — if phi4-mini fails compliance gate
+
+> **Fact-checked**: Qwen2.5 models except 3B and 72B are Apache 2.0. The 3B model is under the Qwen License. Verified via HuggingFace + Ollama.
 
 | Model | Params | Why Consider | Risk |
 |---|---|---|---|
@@ -226,7 +229,7 @@ answer = llm.synthesize(question, chunks)
 | Scheduler | APScheduler | In-process background tasks |
 | Logging | structlog | Structured JSON, good for debugging |
 | Email/IMAP | NOT building | Auth complexity too high for 24h |
-| 0.5B fallback | NOT using | Too weak to be useful |
+| 0.5B fallback | T3: qwen2.5:0.5b for weak CPU/RAM | Mandatory for low-end devices, 398MB, Apache 2.0 |
 
 ---
 
