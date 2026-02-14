@@ -9,7 +9,7 @@ import os
 # Add parent to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from backend.reasoning.cpumodel.models import (
+from reasoning.reasoning.cpumodel.models import (
     ChunkEvidence,
     QueryType,
     ModelTier,

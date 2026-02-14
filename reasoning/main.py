@@ -15,10 +15,10 @@ import json
 import asyncio
 import structlog
 
-from backend.reasoning.critic import ReasoningPipeline
-from backend.reasoning.ollama_client import OllamaClient
-from backend.reasoning.confidence import ConfidenceLevel
-from backend.database import memory_db
+from reasoning.reasoning.critic import ReasoningPipeline
+from reasoning.reasoning.ollama_client import OllamaClient
+from reasoning.reasoning.confidence import ConfidenceLevel
+from reasoning.database import memory_db
 
 # Configure structured logging
 structlog.configure(
@@ -490,7 +490,7 @@ async def seed_demo_data():
     Seed the database with demo data for testing.
     Only available in development mode.
     """
-    from backend.seed_data import seed_sample_data
+    from reasoning.seed_data import seed_sample_data
     await seed_sample_data()
     return {"status": "seeded", "message": "Demo data loaded successfully"}
 

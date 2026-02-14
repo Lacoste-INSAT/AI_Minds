@@ -233,16 +233,12 @@ class OllamaClient:
         return all_tiers[start_idx:]
 
 
-# Singleton instance for the app
-_client: Optional[OllamaClient] = None
+# Eagerly initialize to avoid race conditions during lazy initialization.
+_client: OllamaClient = OllamaClient(default_tier=DEFAULT_TIER)
 
 
 def get_ollama_client() -> OllamaClient:
-    """Get or create the singleton Ollama client."""
-    global _client
-    if _client is None:
-        # Default to T3 for CPU-only
-        _client = OllamaClient(default_tier=DEFAULT_TIER)
+    """Get the singleton Ollama client."""
     return _client
 
 

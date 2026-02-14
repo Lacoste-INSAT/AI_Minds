@@ -21,7 +21,7 @@ class TestQueryPlanner:
     
     def test_simple_query_detection(self):
         """Simple factual queries should be classified as SIMPLE."""
-        from backend.reasoning.query_planner import QueryPlanner, QueryType
+        from reasoning.reasoning.query_planner import QueryPlanner, QueryType
         
         # Mock Ollama client (not needed for regex-based classification)
         mock_ollama = MagicMock()
@@ -35,7 +35,7 @@ class TestQueryPlanner:
     
     def test_temporal_query_detection(self):
         """Temporal queries should be detected by keywords."""
-        from backend.reasoning.query_planner import QueryPlanner, QueryType
+        from reasoning.reasoning.query_planner import QueryPlanner, QueryType
         
         mock_ollama = MagicMock()
         planner = QueryPlanner(mock_ollama)
@@ -49,7 +49,7 @@ class TestQueryPlanner:
     
     def test_multi_hop_detection(self):
         """Multi-hop queries need relationship traversal."""
-        from backend.reasoning.query_planner import QueryPlanner, QueryType
+        from reasoning.reasoning.query_planner import QueryPlanner, QueryType
         
         mock_ollama = MagicMock()
         planner = QueryPlanner(mock_ollama)
@@ -64,7 +64,7 @@ class TestQueryPlanner:
     
     def test_entity_extraction(self):
         """Should extract capitalized names as potential entities."""
-        from backend.reasoning.query_planner import QueryPlanner
+        from reasoning.reasoning.query_planner import QueryPlanner
         
         mock_ollama = MagicMock()
         planner = QueryPlanner(mock_ollama)
@@ -75,7 +75,7 @@ class TestQueryPlanner:
     
     def test_retrieval_strategy(self):
         """Should return correct strategy for each query type."""
-        from backend.reasoning.query_planner import QueryPlanner, QueryType, QueryPlan
+        from reasoning.reasoning.query_planner import QueryPlanner, QueryType, QueryPlan
         
         mock_ollama = MagicMock()
         planner = QueryPlanner(mock_ollama)
@@ -109,8 +109,8 @@ class TestRRFFusion:
     
     def test_rrf_score_calculation(self):
         """RRF should combine results from multiple paths."""
-        from backend.reasoning.fusion import RRFFusion, FusedResult
-        from backend.reasoning.retriever import RetrievalResult, RetrievalBundle
+        from reasoning.reasoning.fusion import RRFFusion, FusedResult
+        from reasoning.reasoning.retriever import RetrievalResult, RetrievalBundle
         
         # Create mock results
         dense_results = [
@@ -165,8 +165,8 @@ class TestRRFFusion:
     
     def test_deduplication(self):
         """Same chunk from multiple paths should be deduplicated."""
-        from backend.reasoning.fusion import RRFFusion
-        from backend.reasoning.retriever import RetrievalResult, RetrievalBundle
+        from reasoning.reasoning.fusion import RRFFusion
+        from reasoning.reasoning.retriever import RetrievalResult, RetrievalBundle
         
         # Same chunk appears in both paths
         results = [
@@ -196,10 +196,10 @@ class TestConfidenceScorer:
     
     def test_high_confidence(self):
         """Strong signals should produce HIGH confidence."""
-        from backend.reasoning.confidence import ConfidenceScorer, ConfidenceLevel
-        from backend.reasoning.fusion import FusedResult
-        from backend.reasoning.reasoner import ReasoningResult
-        from backend.reasoning.critic import CriticResult, CriticVerdict
+        from reasoning.reasoning.confidence import ConfidenceScorer, ConfidenceLevel
+        from reasoning.reasoning.fusion import FusedResult
+        from reasoning.reasoning.reasoner import ReasoningResult
+        from reasoning.reasoning.critic import CriticResult, CriticVerdict
         
         scorer = ConfidenceScorer()
         
@@ -248,8 +248,8 @@ class TestConfidenceScorer:
     
     def test_low_confidence_on_rejection(self):
         """Critic rejection should lower confidence."""
-        from backend.reasoning.confidence import ConfidenceScorer, ConfidenceLevel
-        from backend.reasoning.critic import CriticResult, CriticVerdict
+        from reasoning.reasoning.confidence import ConfidenceScorer, ConfidenceLevel
+        from reasoning.reasoning.critic import CriticResult, CriticVerdict
         
         scorer = ConfidenceScorer()
         
@@ -280,7 +280,7 @@ class TestOllamaClient:
     @pytest.mark.asyncio
     async def test_fallback_on_timeout(self):
         """Should fallback to next tier on timeout."""
-        from backend.reasoning.ollama_client import OllamaClient, ModelTier
+        from reasoning.reasoning.ollama_client import OllamaClient, ModelTier
         
         client = OllamaClient(enable_fallback=True)
         
@@ -307,7 +307,7 @@ class TestOllamaClient:
     @pytest.mark.asyncio
     async def test_no_fallback_when_disabled(self):
         """Should not fallback when disabled."""
-        from backend.reasoning.ollama_client import OllamaClient, ModelTier
+        from reasoning.reasoning.ollama_client import OllamaClient, ModelTier
         
         client = OllamaClient(enable_fallback=False)
         
@@ -333,8 +333,8 @@ class TestReasoningPipelineIntegration:
     @pytest.mark.asyncio
     async def test_full_pipeline_mock(self):
         """Test full pipeline with mocked components."""
-        from backend.reasoning.query_planner import QueryPlanner, QueryType
-        from backend.reasoning.fusion import FusedResult
+        from reasoning.reasoning.query_planner import QueryPlanner, QueryType
+        from reasoning.reasoning.fusion import FusedResult
         
         # Create mock results
         mock_sources = [

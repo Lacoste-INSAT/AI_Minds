@@ -4,7 +4,6 @@ Synthesizes grounded answers from retrieved context with inline citations.
 """
 import json
 import logging
-import re
 import time
 from typing import Optional
 
@@ -129,12 +128,12 @@ async def verify_answer(
     if response.success and response.content:
         try:
             result = json.loads(response.content)
-            verdict_str = result.get("verdict", "APPROVE").upper()
+            verdict_str = result.get("verdict", "REVISE").upper()
             
             try:
                 verdict = VerificationVerdict(verdict_str)
             except ValueError:
-                verdict = VerificationVerdict.APPROVE
+                verdict = VerificationVerdict.REVISE
             
             reasoning = result.get("reasoning", "")
             revision = result.get("suggested_revision")
@@ -185,19 +184,12 @@ def compute_confidence(
     # Factor 3: Source count
     source_count_factor = min(1.0, len(chunks) / 3)
     
-    # Factor 4: Recency - DISABLED until timestamps are populated by ingestion
-    # Setting weight to 0 and redistributing to other factors for honesty
-    # TODO: Enable when ChunkEvidence has timestamp field populated
-    recency_factor = 0.5  # Neutral value (not used in calculation)
-    
-    # Weighted combination (recency disabled - weights redistributed)
-    # Original: 0.30 + 0.30 + 0.20 + 0.20 = 1.0
-    # Current:  0.40 + 0.35 + 0.25 + 0.00 = 1.0
+    # Recency factor disabled until ingestion pipeline populates timestamps.
+    # Weights redistributed: 0.40 + 0.35 + 0.25 = 1.0
     confidence_score = (
         0.40 * top_source_factor +
         0.35 * agreement_factor +
         0.25 * source_count_factor
-        # + 0.0 * recency_factor  # Disabled until implemented
     )
     
     # Penalize if critic rejected

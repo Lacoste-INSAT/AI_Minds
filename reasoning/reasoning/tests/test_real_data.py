@@ -12,13 +12,13 @@ Run with:
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 
-from backend.reasoning.tests.test_fixtures import (
+from reasoning.reasoning.tests.test_fixtures import (
     REAL_TEST_CHUNKS,
     TEST_QUESTIONS,
     BM25_TEST_CORPUS,
     ACCURACY_TEST_CASES,
 )
-from backend.reasoning.cpumodel.models import (
+from reasoning.reasoning.cpumodel.models import (
     QueryType,
     ConfidenceLevel,
     FusedContext,
@@ -26,9 +26,9 @@ from backend.reasoning.cpumodel.models import (
     LLMResponse,
     ModelTier,
 )
-from backend.reasoning.cpumodel.query_planner import classify_query, _extract_entities_basic
-from backend.reasoning.cpumodel.fusion import fuse_results, format_context_for_llm
-from backend.reasoning.cpumodel.llm_agent import (
+from reasoning.reasoning.cpumodel.query_planner import classify_query, _extract_entities_basic
+from reasoning.reasoning.cpumodel.fusion import fuse_results, format_context_for_llm
+from reasoning.reasoning.cpumodel.llm_agent import (
     reason_and_respond,
     compute_confidence,
     _build_reasoning_prompt,
@@ -107,7 +107,7 @@ class TestFusionRealData:
     def test_fuse_rag_chunks(self):
         """Fuse RAG-related chunks."""
         # Simulate retrieval results
-        from backend.reasoning.cpumodel.models import RetrievalResult
+        from reasoning.reasoning.cpumodel.models import RetrievalResult
         
         rag_chunks = [c for c in REAL_TEST_CHUNKS if "rag" in c.chunk_id.lower()][:5]
         
@@ -365,7 +365,7 @@ class TestConfidenceWithRealData:
     
     def test_high_confidence_multiple_sources(self):
         """Multiple matching sources should give high confidence."""
-        from backend.reasoning.cpumodel.models import VerificationVerdict
+        from reasoning.reasoning.cpumodel.models import VerificationVerdict
         
         rag_chunks = [c for c in REAL_TEST_CHUNKS if "rag" in c.chunk_id.lower()][:4]
         
@@ -386,7 +386,7 @@ class TestConfidenceWithRealData:
     
     def test_low_confidence_single_source(self):
         """Single source should give lower confidence."""
-        from backend.reasoning.cpumodel.models import VerificationVerdict
+        from reasoning.reasoning.cpumodel.models import VerificationVerdict
         
         single_chunk = [REAL_TEST_CHUNKS[0]]
         
@@ -407,7 +407,7 @@ class TestConfidenceWithRealData:
     
     def test_no_confidence_on_reject(self):
         """Rejection should give low/none confidence."""
-        from backend.reasoning.cpumodel.models import VerificationVerdict
+        from reasoning.reasoning.cpumodel.models import VerificationVerdict
         
         chunks = [c for c in REAL_TEST_CHUNKS[:3]]
         

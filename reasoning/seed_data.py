@@ -14,7 +14,7 @@ import hashlib
 from typing import List, Tuple
 import re
 
-from backend.database import memory_db
+from reasoning.database import memory_db
 
 # Sample data directory
 SAMPLE_DATA_DIR = Path(__file__).parent.parent / "data" / "sample_knowledge"

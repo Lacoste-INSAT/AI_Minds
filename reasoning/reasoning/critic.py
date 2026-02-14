@@ -463,7 +463,7 @@ class ReasoningPipeline:
         Retrieve from database using FTS (demo mode).
         Returns FusedResult-compatible objects.
         """
-        from backend.database import memory_db
+        from reasoning.database import memory_db
         from dataclasses import dataclass
         from datetime import datetime
         

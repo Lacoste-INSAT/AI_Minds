@@ -9,7 +9,7 @@ Endpoints:
 - GET  /query/health → Health check for reasoning services
 
 Usage:
-    from backend.reasoning.api import router
+    from reasoning.reasoning.api import router
     app.include_router(router, prefix="/query", tags=["reasoning"])
 """
 
@@ -19,14 +19,14 @@ from typing import Optional
 import logging
 import time
 
-from backend.reasoning.cpumodel.models import (
+from reasoning.reasoning.cpumodel.models import (
     ModelTier,
     ConfidenceLevel,
     VerificationVerdict,
     AnswerPacket,
 )
-from backend.reasoning.cpumodel.engine import process_query
-from backend.reasoning.cpumodel.ollama_client import get_ollama_client, DEFAULT_TIER
+from reasoning.reasoning.cpumodel.engine import process_query
+from reasoning.reasoning.cpumodel.ollama_client import get_ollama_client, DEFAULT_TIER
 
 logger = logging.getLogger(__name__)
 
@@ -238,7 +238,7 @@ def create_app():
         uvicorn backend.reasoning.api:create_app --factory --reload
     
     Or import the router into the main app:
-        from backend.reasoning.api import router
+        from reasoning.reasoning.api import router
         app.include_router(router, prefix="/query", tags=["reasoning"])
     """
     from fastapi import FastAPI
