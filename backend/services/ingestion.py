@@ -12,9 +12,9 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+import queue
 import re
 import threading
-from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -92,7 +92,7 @@ async def _broadcast_ws(event: str, data: dict) -> None:
 
 _observer = None                 # watchdog Observer instance
 _checksum_store = None           # ingestion.observer ChecksumStore
-_event_queue: deque | None = None
+_event_queue: queue.Queue | None = None
 _consumer_task: asyncio.Task | None = None
 
 
@@ -102,7 +102,6 @@ def _build_observer_config() -> dict[str, Any]:
         "watched_directories": list(settings.watched_directories),
         "exclude_patterns": list(settings.exclude_patterns),
         "max_file_size_mb": settings.max_file_size_mb,
-        "scan_interval_seconds": settings.scan_interval_seconds,
         "rate_limit_files_per_minute": settings.rate_limit_files_per_minute,
     }
 
@@ -137,7 +136,7 @@ def start_file_watcher(directories: list[str]) -> None:
         return
 
     _checksum_store = ChecksumStore()
-    _event_queue = deque()
+    _event_queue = queue.Queue()
 
     # 1 — watchdog Observer + IngestionHandler
     handler = IngestionHandler(config, _checksum_store, _event_queue)
@@ -205,14 +204,13 @@ async def _consume_events() -> None:
     feeds each file through the full ingestion pipeline.
     """
     while _event_queue is not None:
-        # Pop next event (non-blocking)
+        # Pop next event (thread-safe get with timeout)
         try:
-            fe = _event_queue.popleft()
-        except IndexError:
-            await asyncio.sleep(0.5)
+            fe = await asyncio.to_thread(_event_queue.get, timeout=0.5)
+        except queue.Empty:
             continue
 
-        ingestion_state.queue_depth = len(_event_queue)
+        ingestion_state.queue_depth = _event_queue.qsize()
 
         try:
             if fe.event_type in ("created", "modified"):
@@ -544,7 +542,7 @@ async def scan_and_ingest(directories: list[str] | None = None) -> dict[str, Any
         for directory in resolved:
             for root, _, files in os.walk(directory):
                 for name in files:
-                    filepath = str(Path(root, name).resolve())
+                    filepath = str(Path(root, name).absolute())
 
                     if not passes_all(filepath, config):
                         continue
