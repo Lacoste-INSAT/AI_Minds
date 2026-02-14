@@ -1,0 +1,23 @@
+Meeting Notes - Project Synapsis Planning
+Date: February 14, 2026
+
+Attendees: Alice Johnson, Bob Smith, Dr. Carol Lee
+
+Summary:
+We discussed the architecture for the Synapsis personal knowledge assistant.
+The system will use local-only processing with Ollama for LLM inference and
+Qdrant for vector storage. All data stays on the user's machine.
+
+Key Decisions:
+1. Use FastAPI as the backend framework for REST and WebSocket APIs.
+2. Sentence-transformers (all-MiniLM-L6-v2) for embeddings — 384 dimensions.
+3. SQLite for metadata and graph persistence.
+4. NetworkX for in-memory knowledge graph operations.
+5. Watchdog for zero-touch file monitoring.
+
+Action Items:
+- Alice: Set up the ingestion pipeline by Friday.
+- Bob: Implement the hybrid retrieval (dense + sparse + graph) module.
+- Carol: Design the proactive insights engine for contradiction detection.
+
+Next meeting: February 21, 2026 at 10:00 AM.

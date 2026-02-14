@@ -35,8 +35,8 @@ networkx>=3.4
 # === Audio Transcription (Person 3) ===
 # faster-whisper>=1.1
 
-# === File Watching (Person 3) ===
-# watchdog>=6.0
+# === File Watching ===
+watchdog>=6.0
 
 # === Scheduling ===
 apscheduler>=3.10

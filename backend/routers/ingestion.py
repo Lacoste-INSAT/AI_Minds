@@ -1,10 +1,8 @@
 """
-Synapsis Backend — Ingestion Status Router (Person 3)
+Synapsis Backend — Ingestion Router
 GET  /ingestion/status — queue depth, files processed
-POST /ingestion/scan   — trigger manual scan
+POST /ingestion/scan   — trigger manual directory scan
 WS   /ingestion/ws     — real-time ingestion events
-
-TODO (Person 3): Wire up to full ingestion pipeline.
 """
 
 from __future__ import annotations
@@ -19,6 +17,7 @@ from backend.services.ingestion import (
     ingestion_state,
     register_ws_client,
     unregister_ws_client,
+    scan_and_ingest,
 )
 
 logger = structlog.get_logger(__name__)
@@ -34,9 +33,15 @@ async def get_ingestion_status():
 
 
 @router.post("/scan")
-async def trigger_scan():
-    """Manually trigger a directory scan."""
-    return {"message": "Scan not yet implemented (Person 3)", "status": "pending"}
+async def trigger_scan(directories: list[str] | None = None):
+    """
+    Manually trigger a directory scan.
+
+    If *directories* is omitted the currently-configured watched
+    directories are scanned.
+    """
+    result = await scan_and_ingest(directories)
+    return result
 
 
 @router.websocket("/ws")
