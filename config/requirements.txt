@@ -25,21 +25,21 @@ rank-bm25>=0.2.2
 networkx>=3.4             # in-memory graph analysis
 # SQLite is stdlib — no extra dep
 
-# === NLP / NER ===
-spacy>=3.8
+# === NLP / NER (Person 3) ===
+# spacy>=3.8
 # Post-install: python -m spacy download en_core_web_sm
 
-# === Document Parsing ===
-pymupdf>=1.25             # PDF extraction (import fitz)
-python-docx>=1.1          # DOCX extraction
-Pillow>=11.0              # image handling
-pytesseract>=0.3          # OCR
+# === Document Parsing (Person 3) ===
+# pymupdf>=1.25             # PDF extraction (import fitz)
+# python-docx>=1.1          # DOCX extraction
+# Pillow>=11.0              # image handling
+# pytesseract>=0.3          # OCR
 
-# === Audio Transcription ===
-faster-whisper>=1.1       # tiny model, CPU-friendly
+# === Audio Transcription (Person 3) ===
+# faster-whisper>=1.1       # tiny model, CPU-friendly
 
-# === File Watching ===
-watchdog>=6.0
+# === File Watching (Person 3) ===
+# watchdog>=6.0
 
 # === Scheduling ===
 apscheduler>=3.10
