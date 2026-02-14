@@ -1,8 +1,9 @@
 # Synapsis — System Architecture (FINAL)
 
-> **Version**: 3.0 — Final merged design  
-> **Date**: 2025-02-14  
-> **Status**: LOCKED — Implement from this document
+> **Version**: 4.0 — Post-mentor revision (GAME CHANGER)  
+> **Date**: 2026-02-14  
+> **Status**: LOCKED — Implement from this document  
+> **Change**: Mentor feedback → zero-touch ingestion, air-gapped local, localhost UI
 
 ---
 
@@ -12,22 +13,48 @@
 
 | What everyone else builds | What we build |
 |---|---|
+| User uploads files manually | **Zero-touch** — system auto-discovers and ingests everything |
 | Embed → Top-K → Generate | Embed → Graph Build → Reason → Verify → Respond |
 | Flat vector store | Knowledge graph + vector index |
 | Answers when asked | Surfaces insights proactively |
 | Stateless per query | Tracks belief evolution over time |
 | "Here's your answer" | "Here's my reasoning, sources, and confidence" |
+| Cloud-connected | **Air-gapped** — zero internet, zero data leaks, ever |
 
 **Why graph > flat vectors**: When you flatten structured data into a flat vector, you lose structure and the results degrade. Your notes, meetings, people, and projects form a graph — entities connected by relationships. Vector search finds *similar text*. Graph traversal finds *related knowledge*. Both together win.
 
-### 1.2 Local-First Is a Feature
+### 1.2 Air-Gapped Local — Not "Local-First", LOCAL-ONLY
 
-- **Privacy**: Zero data leaves the device. No cloud. No leaks.
+> **Mentor directive**: "Purely local, zero internet connection, all running locally for security reasons."
+
+- **Air-gapped**: Zero network calls. No DNS, no HTTP out, no telemetry. Period.
+- **Privacy**: Data never leaves the device. Not encrypted-in-transit — *never transmitted at all*.
 - **Cost**: No API bills. Run forever after setup.
 - **Sovereignty**: User owns their data AND their AI.
 - **Efficiency**: Small model + agentic architecture > big model + single call.
+- **Offline-ready**: All models, embeddings, and dependencies pre-bundled. Works on airplane mode.
 
-### 1.3 Agentic Architecture
+### 1.3 Zero-Touch Ingestion — The User Does NOTHING
+
+> **Mentor directive**: "Absolutely zero manual ingestion. The user is not even in the data pipeline."
+
+The user never uploads, drags, drops, or clicks "import". The system:
+1. **On first launch**: Presents a setup wizard — user picks which directories to watch (Documents, Desktop, Downloads, etc.) and optionally sets exclusion rules (file types, folder patterns)
+2. **After setup**: Continuously and silently watches those directories. New files, modified files, deleted files — all handled automatically.
+3. **User's only role**: Ask questions and receive insights. That's it.
+
+This is the **#1 differentiator** from every other RAG project at this hackathon. Everyone else has an upload button. We don't.
+
+### 1.4 Localhost Web Interface
+
+> **Mentor directive**: "Needs to run for all users. Localhost interface rather than a Windows software."
+
+- Served at `http://localhost:3000` — works in any browser, any OS
+- No Electron, no Tauri, no native app — just a web server bound to `127.0.0.1`
+- Accessible to anyone who can open a browser — maximum compatibility
+- No external network binding — `127.0.0.1` only, never `0.0.0.0`
+
+### 1.5 Agentic Architecture
 
 Not a single model call — an orchestrated pipeline of specialized agents:
 
@@ -47,18 +74,25 @@ Not a single model call — an orchestrated pipeline of specialized agents:
 ```mermaid
 graph TD
 
-    subgraph "Data Sources"
-        FOLDER[Watched Inbox Folder]
-        NOTES[Notes Folder]
-        SCREEN[Images / Screenshots]
-        AUDIO[Audio Recordings]
+    subgraph "Setup (One-Time)"
+        WIZARD[Setup Wizard — Pick directories + exclusions]
     end
 
-    subgraph "Ingestion Module"
-        WATCH[Filesystem Watcher Service]
+    subgraph "Auto-Discovered Data Sources"
+        DOCS[~/Documents]
+        DESK[~/Desktop]
+        DOWN[~/Downloads]
+        CUSTOM[User-defined paths]
+    end
+
+    subgraph "Ingestion Module (Fully Automatic)"
+        WATCH[Filesystem Watcher — watchdog]
+        DEDUP[Dedup + Change Detector — checksum]
         QUEUE[Async Processing Queue]
         INTAKE[Intake Orchestrator]
     end
+
+    WIZARD --> WATCH
 
     subgraph "Parsing & Normalization Module"
         TXT[Text Parser — PDF/DOCX/TXT]
@@ -109,11 +143,12 @@ graph TD
         METRIC[Confidence Metrics]
     end
 
-    FOLDER --> WATCH
-    NOTES --> WATCH
-    SCREEN --> WATCH
-    AUDIO --> WATCH
-    WATCH --> QUEUE
+    DOCS --> WATCH
+    DESK --> WATCH
+    DOWN --> WATCH
+    CUSTOM --> WATCH
+    WATCH --> DEDUP
+    DEDUP --> QUEUE
     QUEUE --> INTAKE
     INTAKE --> TXT
     INTAKE --> OCR
@@ -157,26 +192,29 @@ graph TD
 
 ```
 ┌──────────────────────────────────────────────────────────────────┐
-│                     FRONTEND (Next.js)                            │
+│               FRONTEND (Next.js @ localhost:3000)                  │
 │  ┌──────────┐  ┌──────────────┐  ┌────────────┐  ┌───────────┐  │
 │  │ Chat View │  │ Graph Explorer│  │ Timeline   │  │ Digest    │  │
 │  │ Q&A +     │  │ Interactive   │  │ Belief     │  │ Proactive │  │
 │  │ citations │  │ knowledge map │  │ evolution  │  │ insights  │  │
 │  └──────────┘  └──────────────┘  └────────────┘  └───────────┘  │
+│  ┌──────────────────────────────────────────────────────────────┐ │
+│  │ Setup Wizard (first-run only): pick directories + exclusions │ │
+│  └──────────────────────────────────────────────────────────────┘ │
 └────────────────────────┬─────────────────────────────────────────┘
-                         │ REST + WebSocket
+                         │ REST + WebSocket (localhost only)
 ┌────────────────────────▼─────────────────────────────────────────┐
-│                     BACKEND (FastAPI)                             │
+│                BACKEND (FastAPI @ localhost:8000)                  │
 │                                                                   │
 │  ┌─────────────────┐  ┌──────────────────┐  ┌────────────────┐  │
 │  │ Ingestion Engine │  │ Reasoning Engine  │  │ Proactive      │  │
-│  │ • File watcher   │  │ • Query planner   │  │ Engine         │  │
-│  │ • Parser router  │  │ • Dense retrieval │  │ • Digest gen   │  │
-│  │ • Chunking       │  │ • Sparse retrieval│  │ • Pattern det  │  │
-│  │ • Entity extract │  │ • Graph traversal │  │ • Contradiction│  │
-│  │ • Graph builder  │  │ • Fusion + rerank │  │   detection    │  │
-│  │ • Enrichment     │  │ • LLM reasoning   │  │ • Connection   │  │
-│  │                  │  │ • Critic verify   │  │   discovery    │  │
+│  │ • Auto-watcher   │  │ • Query planner   │  │ Engine         │  │
+│  │ • Dir scanner    │  │ • Dense retrieval │  │ • Digest gen   │  │
+│  │ • Dedup (cksum)  │  │ • Sparse retrieval│  │ • Pattern det  │  │
+│  │ • Parser router  │  │ • Graph traversal │  │ • Contradiction│  │
+│  │ • Chunking       │  │ • Fusion + rerank │  │   detection    │  │
+│  │ • Entity extract │  │ • LLM reasoning   │  │ • Connection   │  │
+│  │ • Graph builder  │  │ • Critic verify   │  │   discovery    │  │
 │  └────────┬─────────┘  └────────┬─────────┘  └───────┬────────┘  │
 │                                                                   │
 │  ┌─────────────────────────────────────────────────────────────┐  │
@@ -208,13 +246,25 @@ graph TD
 
 ## 4. Ingestion Engine
 
-### 4.1 Pipeline
+### 4.1 Zero-Touch Pipeline (NO USER INVOLVEMENT)
 
 ```
-File arrives (watcher / quick-add API)
+[FIRST RUN] Setup Wizard
+    │
+    ├─ User picks directories to watch (~/Documents, ~/Desktop, ~/Downloads, custom)
+    ├─ User sets exclusion rules (optional): file types, folder patterns, size limits
+    └─ Config saved to ~/.synapsis/config.json
     │
     ▼
-Parser Router (by file extension)
+[CONTINUOUS] Auto-Discovery & Watch
+    │
+    ├─ Initial scan: crawl all configured directories recursively
+    ├─ Ongoing: watchdog monitors for new / modified / deleted files
+    ├─ Dedup: checksum-based — skip already-ingested, re-process if modified
+    └─ Rate limit: process max N files/minute to avoid CPU spike
+    │
+    ▼
+Parser Router (by file extension — automatic)
     │
     ├─ .pdf → PyMuPDF → text + page info
     ├─ .txt/.md → read → raw text
@@ -241,6 +291,8 @@ Post-ingestion hook:
     └─ Connection discovery (new entities linking to existing clusters)
 ```
 
+**The user never sees this pipeline.** They just use their computer normally — save files, take notes, record memos — and Synapsis silently builds their knowledge graph in the background.
+
 ### 4.2 Supported Modalities (5 total)
 
 | Modality | Tool | Notes |
@@ -261,11 +313,36 @@ Three-layer approach (deterministic first, LLM only for what requires understand
 
 This layered approach means if the LLM fails or is slow, we still get basic entities. The LLM only handles the hard part: understanding *relationships* between entities and extracting *concepts*.
 
-### 4.4 Ingestion Queue
+### 4.4 Boundary Configuration (Setup Wizard)
+
+The **only** user interaction with the data pipeline. Runs once on first launch, editable later via Settings.
+
+```json
+// ~/.synapsis/config.json
+{
+  "watched_directories": [
+    "~/Documents",
+    "~/Desktop",
+    "~/Downloads"
+  ],
+  "exclude_patterns": [
+    "node_modules/**",
+    ".git/**",
+    "*.exe",
+    "*.dll"
+  ],
+  "max_file_size_mb": 50,
+  "scan_interval_seconds": 30,
+  "rate_limit_files_per_minute": 10
+}
+```
+
+### 4.5 Ingestion Queue
 
 - Async queue with retry (max 3 attempts, exponential backoff)
 - Dead-letter log for failed items (don't block pipeline)
 - Idempotent: re-ingesting same file (by checksum) updates, doesn't duplicate
+- Background priority: ingestion runs at low priority so it never slows down the user's machine
 
 ---
 
@@ -405,6 +482,14 @@ End-to-end system health and quality tracking — first-class, not an afterthoug
 ## 8. Knowledge Graph Schema (SQLite)
 
 ```sql
+CREATE TABLE sources_config (
+    id           TEXT PRIMARY KEY,
+    path         TEXT NOT NULL UNIQUE,
+    enabled      INTEGER DEFAULT 1,
+    exclude_patterns TEXT,
+    added_at     TEXT NOT NULL
+);
+
 CREATE TABLE documents (
     id          TEXT PRIMARY KEY,
     filename    TEXT NOT NULL,
@@ -486,12 +571,12 @@ CREATE INDEX idx_docs_checksum ON documents(checksum);
 @dataclass
 class IngestionRecord:
     ingestion_id: str
-    source_type: str     # "watcher" | "quick_add" | "audio_drop"
+    source_type: str     # "auto_scan" | "watcher_event" (always automatic, never manual)
     modality: str        # "text" | "pdf" | "image" | "audio" | "json"
     source_uri: str
     collected_at: str
     checksum: str
-    status: str          # "queued" | "processed" | "failed"
+    status: str          # "queued" | "processed" | "failed" | "skipped"
 
 @dataclass
 class KnowledgeCard:
@@ -527,15 +612,18 @@ class AnswerPacket:
 
 ### 9.2 API Surface
 
+> **No manual ingest endpoints.** All ingestion is automatic. User-facing API is query + read only.
+
 | Method | Path | Description |
 |---|---|---|
-| POST | `/ingest/file` | Upload a file → queue for processing |
-| POST | `/ingest/quick-add` | Submit raw text directly |
+| GET | `/config/sources` | Get current watched directories + exclusions |
+| PUT | `/config/sources` | Update watched directories + exclusions (setup wizard) |
 | POST | `/query/ask` | Ask a question → full reasoning pipeline |
 | GET | `/memory/timeline` | Chronological feed of ingested memories |
 | GET | `/memory/{id}` | Single knowledge card with full detail |
 | GET | `/memory/graph` | Graph data for visualization (nodes + edges) |
 | GET | `/memory/stats` | Counts, categories, entity summary |
+| GET | `/ingestion/status` | Current queue depth, processing stats, last scan time |
 | GET | `/insights/digest` | Latest proactive digest |
 | GET | `/health` | Service status + model health |
 | WS | `/query/stream` | Streaming answer tokens |
@@ -614,28 +702,34 @@ services:
     image: ollama/ollama
     volumes:
       - ollama_data:/root/.ollama
+    network_mode: "none"          # AIR-GAPPED: no internet access
 
   qdrant:
     image: qdrant/qdrant
     volumes:
       - qdrant_data:/qdrant/storage
     ports:
-      - "6333:6333"
+      - "127.0.0.1:6333:6333"    # LOCALHOST ONLY
+    network_mode: "none"          # AIR-GAPPED: no internet access
 
   backend:
     build: ./backend
     depends_on: [ollama, qdrant]
     volumes:
-      - ./inbox:/app/inbox
-      - ./data:/app/data
+      - ${HOME}/Documents:/data/documents:ro    # Auto-watch user dirs (read-only)
+      - ${HOME}/Desktop:/data/desktop:ro
+      - ${HOME}/Downloads:/data/downloads:ro
+      - ./data:/app/data                        # Synapsis internal data
+      - ./config:/app/config                    # User boundary config
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"    # LOCALHOST ONLY
+    network_mode: "none"          # AIR-GAPPED: no internet access
 
   frontend:
     build: ./frontend
     depends_on: [backend]
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"    # LOCALHOST ONLY
 
 volumes:
   ollama_data:
@@ -644,6 +738,12 @@ volumes:
 
 **One-command startup**: `docker compose up`
 
+**Security guarantees**:
+- All ports bound to `127.0.0.1` — unreachable from network
+- `network_mode: "none"` on data-handling services — zero outbound internet
+- User directories mounted **read-only** (`:ro`) — Synapsis can never modify user files
+- All Docker images pre-pulled before deployment — no runtime downloads
+
 ---
 
 ## 13. Build Schedule (24h, 5 People)
@@ -651,10 +751,10 @@ volumes:
 | Block | Person A (Backend) | Person B (Data) | Person C (Reasoning) | Person D (Frontend) | Person E (UX/Demo) |
 |---|---|---|---|---|---|
 | H0-H2 | Docker + Ollama | SQLite schema | Prompt templates | Next.js shell | Design system |
-| H2-H4 | File watcher + queue | Qdrant + embeddings | Dense retriever | Chat skeleton | Graph Explorer |
-| H4-H6 | Parser router | Chunking + NER | BM25 + fusion | Citation panel | Timeline view |
+| H2-H4 | Auto-watcher + queue | Qdrant + embeddings | Dense retriever | Setup Wizard | Graph Explorer |
+| H4-H6 | Parser router | Chunking + NER | BM25 + fusion | Chat skeleton | Timeline view |
 | H6-H8 | Audio ingestion | Graph builder | Reasoning + critic | WebSocket stream | Confidence badges |
-| H8-H10 | Quick-add API | Belief tracking | Query planner | Why-this panel | Integration |
+| H8-H10 | Dir scanner + dedup | Belief tracking | Query planner | Ingestion status | Integration |
 | H10-H12 | Bug fixes | Bug fixes | Bug fixes | Bug fixes | Bug fixes |
 | H12-H14 | Proactive engine | Digest SQL | Multi-hop queries | Digest view | Graph polish |
 | H14-H16 | API hardening | Demo dataset | Demo testing | Polish | E2E test |
@@ -670,18 +770,21 @@ volumes:
 
 | ID | Requirement | Pass Condition |
 |---|---|---|
-| AC-01 | Auto-ingest multimodal | All 5 modalities appear in timeline within 30s |
-| AC-02 | Content understanding | Query returns correct content per format |
-| AC-03 | Auto-categorization | Categories assigned without user input |
-| AC-04 | Summaries + actions | Knowledge card + action list generated |
-| AC-05 | Grounded Q&A | Answer includes sources with openable evidence |
-| AC-06 | Uncertainty handling | System says "I don't know" when appropriate |
-| AC-07 | Continuous operation | Ingest + query simultaneously |
-| AC-08 | Persistent memory | Survives full restart |
-| AC-09 | Semantic retrieval | Synonym queries return relevant results |
-| AC-10 | Self-verification | Conflicting sources flagged |
-| AC-11 | Modern UI | Chat + Graph + Timeline all functional |
-| AC-12 | Model compliance | Phi-4-mini < 4B, no external APIs in logs |
+| AC-01 | **Zero-touch ingestion** | Drop files in watched dir → appear in timeline with NO user action |
+| AC-02 | Auto-ingest multimodal | All 5 modalities processed automatically within 30s |
+| AC-03 | **Air-gapped operation** | No outbound network calls in logs, `network_mode: none` verified |
+| AC-04 | Content understanding | Query returns correct content per format |
+| AC-05 | Auto-categorization | Categories assigned without user input |
+| AC-06 | Summaries + actions | Knowledge card + action list generated |
+| AC-07 | Grounded Q&A | Answer includes sources with openable evidence |
+| AC-08 | Uncertainty handling | System says "I don't know" when appropriate |
+| AC-09 | Continuous operation | Ingest + query simultaneously |
+| AC-10 | Persistent memory | Survives full restart |
+| AC-11 | Semantic retrieval | Synonym queries return relevant results |
+| AC-12 | Self-verification | Conflicting sources flagged |
+| AC-13 | **Setup wizard** | First-run config flow → directories selected → watching starts |
+| AC-14 | Modern UI | Chat + Graph + Timeline + Setup Wizard all functional |
+| AC-15 | Model compliance | Phi-4-mini < 4B, no external APIs in logs |
 
 ---
 
@@ -703,6 +806,9 @@ volumes:
 
 ## 16. Anti-Requirements (DO NOT BUILD)
 
+- **No manual file upload** — zero upload buttons, zero drag-and-drop, zero "quick add" forms
+- **No internet connection** — not at runtime, not for telemetry, not for updates, not ever
+- **No native desktop app** — localhost web UI only, no Electron/Tauri
 - No medical/clinical anything
 - No IMAP email polling
 - No mobile app
@@ -718,14 +824,20 @@ volumes:
 
 ## 17. Presentation Talking Points
 
-**"Why local and not cloud?"**
-> "Privacy by design. Synapsis runs entirely on your laptop. No internet, no API bills, no data leaks."
+**"Why zero-touch?"** *(NEW — lead with this)*
+> "Every other RAG project has an upload button. We don't. Synapsis watches your directories silently — you just use your computer normally, and it builds your knowledge graph in the background. The user is not in the data pipeline at all."
+
+**"Why air-gapped?"**
+> "Not 'local-first' — local-ONLY. Zero internet connection. `network_mode: none` in Docker. Your data doesn't just stay encrypted — it's never transmitted. Period. This is a security guarantee, not a preference."
+
+**"Why localhost web UI and not a desktop app?"**
+> "Accessibility. A localhost web interface works on every OS, every browser, no installation beyond Docker. We don't lose time building platform-specific binaries."
 
 **"Why a small model?"**
 > "The intelligence is in the architecture — specialized agents for ingestion, reasoning, verification. A 3.8B model doing one focused task well beats a 70B model doing everything mediocrely."
 
 **"How is this different from a chatbot?"**
-> "A chatbot answers when asked. Synapsis builds understanding over time — tracks beliefs, detects contradictions, discovers connections, and shows reasoning with sources."
+> "A chatbot answers when asked. Synapsis builds understanding over time — tracks beliefs, detects contradictions, discovers connections, and shows reasoning with sources. And it does it without you ever uploading anything."
 
 **"Why a knowledge graph?"**
 > "Structure matters. Your knowledge has people, projects, decisions, timelines. Flatten it into embeddings and you find similar text. Traverse a graph and you find related knowledge."
@@ -740,9 +852,12 @@ volumes:
 | Risk | Impact | Mitigation | Fallback |
 |---|---|---|---|
 | LLM too slow on demo hardware | HIGH | Test early, use quantized GGUF | Switch to Qwen2.5-3B |
+| Auto-scan floods CPU | HIGH | Rate limit (N files/min), low-priority queue | Pause scanning during demo queries |
+| Watched dir has 10K+ files | HIGH | Initial scan in batches, progress indicator | Pre-scan before demo |
 | Entity extraction unreliable | HIGH | Three-layer (regex + spaCy + LLM) | Degrade to regex + spaCy |
 | Graph viz overwhelming | MEDIUM | Limit to ≤50 demo nodes | Static screenshot |
 | Audio transcription slow | MEDIUM | Short clips, pre-transcribe | Text-only demo |
 | Frontend not ready | MEDIUM | API works via Swagger | Swagger UI fallback |
 | Demo query bad result | HIGH | Pre-test 5 queries | Never improvise live |
 | Docker breaks on demo laptop | MEDIUM | Preflight check script | Run services manually |
+| File permissions on user dirs | MEDIUM | Mount read-only, graceful skip on unreadable | Log skipped files, don't crash |

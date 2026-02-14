@@ -1,16 +1,19 @@
 # Synapsis — Research & Open Decisions (FINAL)
 
 > **Status**: Resolve these BEFORE writing code  
-> **Date**: 2026-02-14
+> **Date**: 2026-02-14  
+> **Rev**: Post-mentor — zero-touch ingestion, air-gapped local, localhost UI
 
 ---
 
 ## Panel Insights (Filtered — NOT from judges)
 
 ### Validated our approach:
+- **Zero-touch ingestion is the #1 differentiator**: Mentor confirmed — every other team has upload buttons. We watch directories silently. This is the pitch.
+- **Air-gapped, not just local**: Mentor was explicit — zero internet connection, not "local-first". `network_mode: none` in Docker.
+- **Localhost web UI over native app**: For accessibility across all users. No Electron/Tauri overhead.
 - **Graph > flat vectors**: Geometric DL literature confirms structured data → graph outperforms flat vectors. Use in pitch.
 - **Agentic architecture is the trend**: Orchestrated specialized agents beat single model calls.
-- **Local/on-premise is a selling point**: Real contracts require data sovereignty. Frame as feature.
 - **SLMs + architecture > big models**: Value is in effort/orchestration, not parameter count.
 - **Trust matters**: Confidence scores, source citation, uncertainty handling are expected.
 
@@ -148,7 +151,7 @@ answer = llm.synthesize(question, chunks)
 
 **Decision**: 50 items, personal knowledge theme (NOT medical).
 
-**Scenario**: A person managing a startup project, tracking meetings, ideas, and decisions.
+**Scenario**: A person's actual computer — Synapsis watches ~/Documents, ~/Desktop, ~/Downloads and auto-ingests everything.
 
 | Type | Count | Content |
 |---|---|---|
@@ -158,6 +161,8 @@ answer = llm.synthesize(question, chunks)
 | Audio | 5 | Voice memos with ideas, meeting recordings (short clips) |
 | JSON | 5 | Structured notes with tags and action items |
 | **Total** | **45** | |
+
+**For demo**: Pre-populate these files in a watched directory. On launch, Synapsis auto-discovers and ingests them — zero clicks from the presenter.
 
 **Story threads** (for multi-hop queries):
 - "Sarah" appears in 5+ documents → meeting notes, email summaries, decisions
@@ -185,6 +190,8 @@ answer = llm.synthesize(question, chunks)
 | **Chat** | Ask questions, see answers with citations + confidence badges | P0 |
 | **Graph Explorer** | Interactive knowledge graph, click to explore | P0 |
 | **Timeline** | Chronological feed of memories, filter by category/date | P0 |
+| **Setup Wizard** | First-run: pick directories + exclusions (only user-facing config) | P0 |
+| **Ingestion Status** | Background: files processed, queue depth, last scan time | P1 |
 | **Digest** | Proactive insights, connection alerts, contradictions | P1 |
 
 **Shared components**:
@@ -199,6 +206,9 @@ answer = llm.synthesize(question, chunks)
 | Question | Decision | Rationale |
 |---|---|---|
 | Domain | Personal knowledge (NOT medical) | No scoring bonus for medical, adds regulatory risk |
+| Ingestion | **Zero-touch** — auto-watch, no upload | Mentor directive: user is NOT in the data pipeline |
+| Network | **Air-gapped** — zero internet at runtime | Mentor directive: purely local for security |
+| Interface | **Localhost web UI** (not native app) | Accessibility — any OS, any browser |
 | Graph DB | SQLite + JSON columns | Zero-config, ships with Python, sufficient for demo |
 | Vector DB | Qdrant (on-disk) | Tested, persistent, production-quality |
 | Backend | FastAPI | Async, WebSocket, good ecosystem |
