@@ -1,7 +1,7 @@
 """
 Ollama Provider — Local LLM via Ollama API.
 
-Implements the same LLMProvider ABC as OpenRouterProvider,
+Implements the LLMProvider ABC for local inference via Ollama.
 but hitting localhost:11434 instead of a proprietary API.
 
 Model: Qwen2.5-3B-Instruct (or whatever is pulled in Ollama)

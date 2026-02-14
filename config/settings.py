@@ -3,6 +3,9 @@ from pathlib import Path
 from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+# AI MINDS — Personal Cognitive Assistant
+# NO proprietary APIs. Local models only.
+
 
 ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 
@@ -33,19 +36,8 @@ class Settings(BaseSettings):
     embedding_model: str = "all-MiniLM-L6-v2"
     embedding_dimension: int = 384
 
-    # --- OpenRouter (kept for fallback / QDesign compat) ---
-    openrouter_api_key: str | None = Field(
-        default=None,
-        validation_alias=AliasChoices(
-            "AIMINDS_OPENROUTER_API_KEY", "OPENROUTER_API_KEY"
-        ),
-    )
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    openrouter_model: str = "qwen/qwen-2.5-7b-instruct:free"
-    openrouter_timeout: int = 30
-    openrouter_http_referer: str | None = None
-    openrouter_app_title: str | None = None
-    openrouter_max_retries: int = 3
+    # --- Ingestion ---
+    watch_dir: str | None = None  # optional: auto-ingest from this folder
 
 
 settings = Settings()

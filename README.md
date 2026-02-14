@@ -1,48 +1,21 @@
 # AI MINDS — Personal Cognitive Assistant
 
-> **24-Hour Hackathon Project** — 5-person team  
-> Local-first, open-source, multimodal AI assistant with persistent memory
+> **Hackathon Project** — Local-first, open-source, multimodal AI with persistent memory  
+> **Model**: Qwen2.5-3B-Instruct via Ollama (3B params, fully compliant)  
+> **Stack**: FastAPI + Qdrant + sentence-transformers + watchdog
 
 ---
 
-## What Is This
+## What This Is
 
-A personal AI assistant that **remembers everything you feed it** (PDFs, notes, images, bookmarks, voice memos), stores it in a vector database, and lets you **ask questions grounded in YOUR data** — with citations, self-verification, and uncertainty quantification.
+An AI that **remembers everything you give it** — PDFs, notes, images, bookmarks — stores it in a vector database, and lets you **ask questions grounded in YOUR data** with source citations, self-verification, and uncertainty handling.
 
-Think of it as a **second brain** that actually works: you throw files at it, it chunks and indexes them automatically, and when you ask "what did I read about X last week?", it gives you a sourced answer — not a hallucination.
-
----
-
-## The Idea (Honest Version)
-
-**Core loop:**
-1. **Ingest** — User drops files (PDF, text, images, bookmarks). System auto-chunks, embeds with `all-MiniLM-L6-v2`, stores in Qdrant.
-2. **Ask** — User asks a question. System retrieves top-k relevant chunks via semantic search, builds an augmented prompt, sends to local Qwen2.5-3B via Ollama.
-3. **Verify** — A critic agent reviews the answer: does it actually match the sources? If not → REVISE or flag uncertainty.
-4. **Respond** — Answer with inline citations `[Source: filename.pdf, p.3]` and a confidence bar.
-
-**Why this wins:**
-- Zero proprietary APIs — fully local, fully reproducible
-- Grounded answers (RAG) — no hallucination without citation
-- Self-verification loop (critic agent) — catches bad answers before the user sees them
-- Multimodal ingestion — PDFs, images (OCR), text, markdown, JSON
-- Persistent memory — everything lives in Qdrant, survives restarts
-
----
-
-## Compliance Matrix
-
-| Requirement | Status | How |
-|---|---|---|
-| No proprietary APIs | **PASS** | Ollama + Qwen2.5-3B local, sentence-transformers local |
-| LLM < 4B params | **PASS** | Qwen2.5-3B-Instruct = 3B params |
-| Multimodal auto-ingestion | **PASS** | `unstructured_pipeline.py` handles PDF/text/image/OCR/JSON/markdown |
-| Persistent vector memory | **PASS** | Qdrant with on-disk persistence |
-| Grounded Q&A with citations | **PASS** | RAG retriever builds augmented prompts with source attribution |
-| Self-verification | **PASS** | Critic agent with APPROVE/REVISE/REJECT loop |
-| Uncertainty handling | **PARTIAL** | Confidence scores from retrieval similarity + critic evaluation |
-| Modern premium UI | **TODO** | Next.js frontend (can reuse QDesign's UI components) |
-| Bonus: voice/audio | **STRETCH** | Could add faster-whisper for speech-to-text |
+Not a chatbot. A **cognitive assistant** that:
+- **Ingests automatically** — drop files in a folder, they get processed in the background
+- **Remembers persistently** — everything survives restarts (Qdrant on-disk)
+- **Cites its sources** — every answer references specific documents with relevance scores
+- **Verifies itself** — a critic agent checks answers against sources before showing you (APPROVE/REVISE/REJECT)
+- **Admits uncertainty** — if it doesn't know, it says so
 
 ---
 
@@ -53,99 +26,95 @@ Think of it as a **second brain** that actually works: you throw files at it, it
 │                    Next.js Frontend                      │
 │  (Chat UI, File Upload, Citation Cards, Confidence Bar)  │
 └────────────────────────┬────────────────────────────────┘
-                         │ HTTP/SSE
+                         │ HTTP / SSE
 ┌────────────────────────▼────────────────────────────────┐
 │                  FastAPI Backend (api/)                   │
-│  - /ingest (file upload → chunk → embed → store)         │
-│  - /ask (query → retrieve → generate → verify → respond) │
-│  - /memory (list/search stored knowledge)                │
+│  POST /ingest   — file → chunk → embed → store           │
+│  POST /ask      — query → retrieve → generate → verify   │
+│  GET  /memory   — browse / semantic search stored data    │
+│  GET  /health   — status check                           │
 └──────┬──────────┬──────────┬──────────┬─────────────────┘
        │          │          │          │
-  ┌────▼───┐ ┌───▼────┐ ┌───▼───┐ ┌───▼────────┐
-  │ Ollama │ │ Qdrant │ │Encoder│ │  Ingestion  │
-  │ Qwen   │ │ Vector │ │MiniLM │ │  Pipeline   │
-  │ 2.5-3B │ │   DB   │ │L6-v2  │ │ PDF/OCR/... │
-  └────────┘ └────────┘ └───────┘ └────────────┘
+  ┌────▼───┐ ┌───▼────┐ ┌───▼─────┐ ┌──▼───────────┐
+  │ Ollama │ │ Qdrant │ │ MiniLM  │ │  Ingestion   │
+  │ Qwen   │ │ Vector │ │ L6-v2   │ │  Pipeline    │
+  │ 2.5-3B │ │   DB   │ │ Embedder│ │  + Watcher   │
+  └────────┘ └────────┘ └─────────┘ └──────────────┘
 ```
 
-**Agent Flow (ask endpoint):**
+**Ask Flow (what happens when you query):**
 ```
-User Query
+User Question
     │
     ▼
-Retrieve top-k chunks from Qdrant (semantic search)
+Embed question with all-MiniLM-L6-v2
     │
     ▼
-Build augmented prompt with sources
+Retrieve top-k relevant chunks from Qdrant
+    │
+    ▼
+Build augmented prompt with source citations
     │
     ▼
 Generate answer via Ollama (Qwen2.5-3B)
     │
     ▼
-Critic Agent: APPROVE / REVISE / REJECT
+Critic Agent: is the answer grounded in sources?
     │
-    ├─ APPROVE → Return answer with citations + confidence
-    ├─ REVISE  → Re-generate with critic feedback (max 2 retries)
-    └─ REJECT  → Return "I don't have enough information" + show what was found
+    ├─ APPROVE → return answer + citations + confidence
+    ├─ REVISE  → re-generate with critic feedback (1 retry)
+    └─ REJECT  → "I don't have enough information" + show what was found
 ```
 
 ---
 
-## What's In This Repo (File Inventory)
+## Repository Structure
 
-Every file here is a **raw copy** from our previous hackathon projects (BioFlow + QDesign), cherry-picked for reusability. We did NOT modify them beyond fixing imports — the domain-specific stuff stays in the files and gets ignored at runtime.
+```
+ai-minds/
+├── api/
+│   └── app.py                  # FastAPI — /ingest, /ask, /memory, /health
+├── agents/
+│   ├── base_agent.py           # Async LLM calls, retry+backoff, JSON extraction
+│   ├── qa_agent.py             # RAG pipeline: retrieve → generate → verify
+│   └── critic_agent.py         # Self-verification: APPROVE / REVISE / REJECT
+├── encoders/
+│   └── embedder.py             # sentence-transformers wrapper (all-MiniLM-L6-v2, 384-dim)
+├── ingestion/
+│   ├── unstructured_pipeline.py # PDF/text/markdown/image/JSON → chunks + entity extraction
+│   └── watcher.py              # Filesystem watcher for auto-ingestion (watchdog)
+├── prompts/
+│   ├── loader.py               # Load prompt templates from .txt files
+│   ├── qa.txt                  # System prompt for grounded Q&A
+│   ├── critic.txt              # Verification prompt (fact-check against sources)
+│   ├── summarize.txt           # Summarization prompt
+│   └── categorize.txt          # Auto-categorization prompt
+├── providers/
+│   ├── base_provider.py        # LLM provider ABC (generate + stream)
+│   ├── ollama_provider.py      # Ollama local LLM (Qwen2.5-3B)
+│   └── factory.py              # Provider singleton
+├── retrieval/
+│   └── qdrant_store.py         # Qdrant wrapper — upsert, search, scroll, delete
+├── config/
+│   └── settings.py             # Pydantic-settings with env var config
+├── requirements.txt
+├── .env.example
+└── README.md
+```
 
-### From QDesign (Selecao-QDesign)
-| File | What It Does | Time Saved |
-|---|---|---|
-| `agents/base_agent.py` | Async LLM calls with retry+backoff, JSON extraction from markdown, streaming | ~3h |
-| `agents/critic_agent.py` | APPROVE/REVISE/REJECT self-verification loop | ~2h |
-| `agents/critic_input.py` | Input preparation for critic evaluation | ~30m |
-| `agents/confidence.py` | Confidence score calculators | ~30m |
-| `providers/base_provider.py` | Clean LLM ABC (generate + stream) | ~30m |
-| `providers/openrouter_provider.py` | SSE streaming HTTP provider (reference impl) | ~1h |
-| `providers/factory.py` | Singleton provider factory | ~15m |
-| `tools/base_tool.py` | Token-bucket rate limiter, async HTTP client, retry | ~2h |
-| `config/settings.py` | Pydantic-settings with env var flexibility | ~30m |
-| `api/app.py` | FastAPI boilerplate (CORS, exception handlers, logging middleware) | ~1h |
-| `prompts/loader.py` | Load prompt templates from .txt files | ~15m |
-
-### From BioFlow (lacoste001)
-| File | What It Does | Time Saved |
-|---|---|---|
-| `retrieval/qdrant_retriever.py` | Qdrant search/ingest/batch with payload filtering | ~2h |
-| `ingestion/unstructured_pipeline.py` | PDF/text/markdown/image/OCR parsing + smart chunking + entity extraction | ~4h |
-| `encoders/text_encoder.py` | HuggingFace encoder with pooling strategies and batching | ~1h |
-| `encoders/image_encoder.py` | CLIP-based image encoder (pattern reference) | ~1h |
-
-### New (Written for AI MINDS)
-| File | What It Does |
-|---|---|
-| `providers/ollama_provider.py` | Ollama local LLM provider (~80 lines), implements same ABC |
-
-**Total estimated time saved: ~14 hours** (out of 24h hackathon)
+Every file has a clear purpose. No dead code, no unused imports, no biomedical leftovers.
 
 ---
 
-## What Still Needs To Be Built (Prioritized)
+## Compliance
 
-### P0 — Must Have (Hours 0-12)
-1. **Wire up the /ingest endpoint** — Connect `unstructured_pipeline.py` → `text_encoder` → `qdrant_retriever` behind a FastAPI route that accepts file uploads
-2. **Wire up the /ask endpoint** — Retrieve → augment prompt → Ollama generate → critic verify → return with citations
-3. **Write 3-4 prompt templates** (in `prompts/`) — system prompt for Q&A, critic evaluation prompt, uncertainty prompt
-4. **Basic Next.js chat UI** — Message input, response display with citations, file upload zone
-
-### P1 — Should Have (Hours 12-18)
-5. **File watcher / auto-ingest** — Watch a folder, auto-ingest new files
-6. **Memory browser** — UI page showing all ingested documents, search/filter
-7. **Confidence visualization** — Color-coded confidence bars on answers
-8. **Streaming responses** — SSE from backend, token-by-token display in UI
-
-### P2 — Nice to Have (Hours 18-24)
-9. **Voice input** — faster-whisper for speech-to-text before query
-10. **Image search** — CLIP encoder for cross-modal image↔text retrieval
-11. **Export/share** — Download conversation with citations as PDF
-12. **Dark mode + polish** — Premium UI feel
+| Rule | Status |
+|------|--------|
+| No proprietary APIs (OpenAI, Anthropic, Gemini, Grok) | **PASS** — zero external API calls |
+| LLM < 4B parameters | **PASS** — Qwen2.5-3B-Instruct = 3B params |
+| Open-source model | **PASS** — Apache 2.0 license |
+| Local embeddings | **PASS** — all-MiniLM-L6-v2 via sentence-transformers |
+| Local vector DB | **PASS** — Qdrant with on-disk persistence |
 
 ---
 
@@ -153,54 +122,113 @@ Every file here is a **raw copy** from our previous hackathon projects (BioFlow 
 
 ```bash
 # 1. Install Ollama and pull the model
-curl -fsSL https://ollama.com/install.sh | sh
+# https://ollama.com/download
 ollama pull qwen2.5:3b-instruct
 
 # 2. Start Qdrant (Docker)
-docker run -p 6333:6333 qdrant/qdrant
+docker run -d -p 6333:6333 -v qdrant_data:/qdrant/storage qdrant/qdrant
 
 # 3. Install Python deps
 cd ai-minds
 pip install -r requirements.txt
 
 # 4. Create .env
-echo "OLLAMA_MODEL=qwen2.5:3b-instruct" > .env
+cp .env.example .env
 
 # 5. Run the backend
 uvicorn api.app:app --reload --port 8000
+
+# 6. (Optional) Start auto-ingest watcher
+python -m ingestion.watcher --dir ./inbox
 ```
 
+Then open http://localhost:8000/docs for the Swagger UI.
+
 ---
 
-## Team Split (5 people × 24h)
+## API Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/ingest` | Upload a file (PDF/text/image/JSON) → chunk → embed → store |
+| `POST` | `/ask` | Ask a question → retrieve → generate → verify → respond with citations |
+| `GET` | `/memory` | Browse stored chunks (optional: `?q=search+term` for semantic search) |
+| `GET` | `/memory/stats` | Total chunks stored |
+| `DELETE` | `/memory/{id}` | Delete a specific memory chunk |
+| `GET` | `/health` | Service status (model, embedding, timestamp) |
+
+---
+
+## What Still Needs To Be Built
+
+### P0 — Must Have (Next)
+1. **Next.js Chat Frontend** — message input, response display with citations, file upload dropzone, confidence indicator
+2. **Audio ingestion** — integrate `faster-whisper` or `whisper-tiny` for voice memo transcription (3rd modality)
+3. **Auto-categorization on ingest** — use the LLM + `categorize.txt` prompt to tag each document automatically
+4. **Streaming responses** — SSE token-by-token display in the UI (backend already supports it)
+
+### P1 — Should Have
+5. **Knowledge graph visualization** — interactive graph view of connections between documents (D3.js / vis.js)
+6. **Memory timeline** — temporal view of when things were ingested, searchable by date range
+7. **Daily/weekly digest** — proactive summaries of recently ingested data ("You saved 5 articles about X this week")
+8. **Contradiction detection** — flag when new data conflicts with existing stored knowledge
+9. **Confidence bar in UI** — color-coded confidence visualization on each answer
+
+### P2 — Differentiators (Wow Factor)
+10. **Multi-hop reasoning** — "Find ideas from Meeting X that relate to Project Y" (graph traversal)
+11. **Concept evolution timeline** — track how your understanding of a topic changed over time
+12. **Query suggestions** — "You might also want to ask..." based on stored context
+13. **Export** — download conversation with citations as PDF/markdown
+14. **Proactive alerts** — "You mentioned deadline for X — it's in 3 days"
+
+---
+
+## Team Split
 
 | Person | Focus | Key Files |
-|---|---|---|
-| **P1** — Backend Lead | Wire /ingest and /ask endpoints, connect all pieces | `api/app.py`, `retrieval/`, `ingestion/` |
-| **P2** — LLM/Agent | Write prompts, tune critic loop, handle edge cases | `agents/`, `providers/`, `prompts/` |
-| **P3** — Frontend | Next.js chat UI, file upload, citation cards | `ui/` (new) |
-| **P4** — Ingestion | Make unstructured_pipeline production-ready, add file watcher | `ingestion/`, `encoders/` |
-| **P5** — Demo/Polish | End-to-end testing, demo prep, README, edge cases | everywhere |
+|--------|-------|-----------|
+| **P1** — Backend Lead | Wire endpoints end-to-end, test full pipeline | `api/app.py`, `retrieval/`, `ingestion/` |
+| **P2** — LLM/Agent | Tune prompts, critic loop, handle edge cases, add audio | `agents/`, `providers/`, `prompts/` |
+| **P3** — Frontend | Next.js chat UI, file upload, citation cards, graph view | `ui/` (new) |
+| **P4** — Ingestion | Production-ready pipeline, file watcher, auto-categorize | `ingestion/`, `encoders/` |
+| **P5** — Demo/Polish | End-to-end testing, demo dataset, presentation prep | everywhere |
 
 ---
 
-## Risk Register
+## Scoring Strategy
+
+Based on the rubric (80 controllable points):
+
+| Criterion | Weight | Target | How We Hit It |
+|-----------|--------|--------|---------------|
+| Innovation & Creativity | 15% | 12/15 | Critic self-verification, auto-categorization, file watcher, proactive digest |
+| Reasoning & Verification | 15% | 13/15 | RAG with citations, APPROVE/REVISE/REJECT loop, confidence scoring, uncertainty handling |
+| Presentation & Demo | 15% | 12/15 | Stable live demo, clear architecture pitch, show the verification pipeline working |
+| Multimodal Ingestion | 10% | 8/10 | PDF + text + images (OCR) + JSON + audio (whisper) + auto-watcher |
+| Persistent Memory | 10% | 9/10 | Qdrant on-disk, survives restarts, organized by category/source/date |
+| Usability | 10% | 8/10 | Clean chat UI, file upload, citation cards, semantic search over memory |
+| Model Compliance | 5% | 5/5 | Qwen2.5-3B via Ollama, zero API calls, documented here |
+| **Total** | **80%** | **67/80** | |
+
+---
+
+## Key Design Decisions
+
+1. **Why Qwen2.5-3B?** — Best instruction-following at 3B params. Fits in 4GB RAM. Fast inference via Ollama.
+2. **Why Qdrant over ChromaDB?** — Better persistence, production filtering, scales to 100K+ vectors.
+3. **Why sentence-transformers?** — `all-MiniLM-L6-v2` is 80MB, fast, and has excellent semantic quality.
+4. **Why a critic agent?** — Most RAG systems trust their output blindly. The critic catches hallucinations before the user sees them. This is what separates us from "just another chatbot".
+5. **Why a file watcher?** — The rubric says "automatically ingest without manual uploads". A folder watcher is the simplest real implementation.
+
+---
+
+## Risks & Mitigations
 
 | Risk | Impact | Mitigation |
-|---|---|---|
-| Qwen2.5-3B too slow on CPU | High | Use quantized GGUF via llama-cpp-python as fallback |
-| Ollama not installed on demo machine | High | Pre-build Docker image with everything baked in |
-| PDF extraction fails on scanned docs | Medium | Fallback to OCR via pytesseract |
-| Qdrant runs out of memory | Low | Use on-disk storage mode, limit collection size |
-| Critic agent loops forever | Medium | Hard cap at 2 revision attempts, then return best-effort |
+|------|--------|------------|
+| Qwen2.5-3B slow on CPU | High | Use quantized GGUF via Ollama, test on demo machine early |
+| Ollama not installed on demo machine | High | Pre-pull model, have Docker backup ready |
+| PDF extraction fails on scanned docs | Medium | OCR fallback via pytesseract |
+| Qdrant connection flaky | Medium | Graceful error handling in all endpoints |
+| Critic agent loops/fails | Medium | Hard cap at 1 retry, then return best-effort answer |
 | Frontend not ready in time | Medium | Fall back to Swagger UI + terminal demo |
-
----
-
-## What We Learned From Previous Projects
-
-**BioFlow** taught us: Qdrant retrieval works great, unstructured pipeline is solid, but don't over-engineer abstractions (we had 5 base classes for a hackathon — insane).
-
-**QDesign** taught us: The async agent pattern with retry+backoff is production-grade and saves hours. The critic loop (APPROVE/REVISE/REJECT) is the real differentiator. Pydantic-settings is the way to do config.
-
-**What we did wrong first time**: We adapted/renamed every file instead of copying raw. Wasted 2+ hours on search-and-replace that added zero value. This time: raw copies, adapt at runtime, ship fast.

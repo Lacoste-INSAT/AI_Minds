@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import AsyncIterator, Any, Optional
 
-from ..prompts.loader import load_prompt
-from ..providers import factory
+from prompts.loader import load_prompt
+from providers import factory
 
 logger = logging.getLogger(__name__)
 
@@ -144,7 +144,7 @@ class BaseAgent:
         """Extract and parse JSON content from LLM API response.
         
         Args:
-            response: Raw API response from OpenRouter
+            response: Raw API response from LLM provider
             context: Context string for error messages
             
         Returns:
@@ -164,7 +164,7 @@ class BaseAgent:
                 message = str(error_info)
             raise ValueError(f"LLM API error [{status}]: {message}")
         
-        # Extract content from OpenRouter response format
+        # Extract content from LLM response format
         try:
             content = response["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as e:

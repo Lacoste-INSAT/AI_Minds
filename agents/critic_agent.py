@@ -1,109 +1,87 @@
 """
-SciAgents-inspired Critic Agent
+Critic Agent — Self-Verification for AI MINDS.
 
-Evaluates hypotheses for scientific rigor and provides revision guidance.
+Evaluates whether a generated answer is actually grounded in the
+retrieved sources. Decisions: APPROVE / REVISE / REJECT.
+
+This is the differentiator: most chatbots just trust their output.
+We verify BEFORE showing the user.
 """
+
 import json
+import logging
 from typing import AsyncIterator
 
-from .base_agent import BaseAgent, AgentResult
-from .critic_input import prepare_critic_input
-from .confidence import calculate_critic_confidence
+from agents.base_agent import BaseAgent, AgentResult
+
+logger = logging.getLogger(__name__)
 
 
 class CriticAgent(BaseAgent):
-    """Critic Agent - Scientific Quality Control."""
     name = "critic"
 
     async def run(self, state: dict) -> AgentResult:
-        """Main critic execution."""
-        hypothesis = state.get("hypothesis", {})
-        planner_output = state.get("planner_output", {})
-        iteration = state.get("iteration", 1)
+        question = state.get("question", "")
+        answer = state.get("answer", "")
+        sources = state.get("sources", [])
 
-        if not hypothesis:
-            return self._result({"error": "No hypothesis provided"}, confidence=0.0)
+        if not answer:
+            return self._result({"decision": "REJECT", "reasoning": "No answer to evaluate."}, confidence=0.0)
 
-        subgraph = planner_output.get("subgraph", {})
-        critic_input = prepare_critic_input(
-            hypothesis=hypothesis, subgraph=subgraph,
-            kg_metadata=planner_output.get("kg_metadata", {}), iteration=iteration
-        )
+        # Build critic prompt
+        from prompts.loader import load_prompt
+        from providers.factory import get_provider
 
         try:
-            response = await self._ask("critic", critic_input)
-            evaluation = self._validate_and_enhance(response, hypothesis, subgraph)
-        except Exception as e:
-            return self._result({"error": f"Evaluation failed: {e}"}, confidence=0.0)
+            system_prompt = load_prompt("critic")
+        except FileNotFoundError:
+            # Inline fallback if prompt file missing
+            system_prompt = (
+                "You are a strict fact-checker. Given a QUESTION, an ANSWER, and SOURCE documents, "
+                "determine if the answer is grounded in the sources.\n"
+                "Respond with JSON: {\"decision\": \"APPROVE|REVISE|REJECT\", \"reasoning\": \"...\"}\n"
+                "APPROVE = answer is correct and supported by sources.\n"
+                "REVISE  = answer has some basis but contains unsupported claims or errors.\n"
+                "REJECT  = answer is not supported by sources or is fabricated."
+            )
 
-        return self._result(evaluation, confidence=calculate_critic_confidence(evaluation))
+        sources_text = "\n\n".join(f"[Source {i+1}]: {s}" for i, s in enumerate(sources))
 
-    async def run_stream(self, state: dict) -> AsyncIterator[str]:
-        """Stream evaluation in real-time."""
-        hypothesis = state.get("hypothesis", {})
-        planner_output = state.get("planner_output", {})
-
-        if not hypothesis:
-            yield json.dumps({"error": "No hypothesis provided"})
-            return
-
-        critic_input = prepare_critic_input(
-            hypothesis=hypothesis, subgraph=planner_output.get("subgraph", {}),
-            kg_metadata=planner_output.get("kg_metadata", {}),
-            iteration=state.get("iteration", 1)
+        user_msg = (
+            f"QUESTION: {question}\n\n"
+            f"ANSWER TO VERIFY:\n{answer}\n\n"
+            f"SOURCES:\n{sources_text}"
         )
 
-        async for chunk in self._ask_stream("critic", critic_input):
-            yield chunk
+        provider = get_provider()
+        messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_msg},
+        ]
 
-    def _validate_and_enhance(self, response: dict, hypothesis: dict, subgraph: dict) -> dict:
-        """Validate LLM response and add computed metrics."""
-        if "decision" not in response:
-            scores = response.get("scores", {})
-            # Handle case where scores is a list instead of dict
-            if isinstance(scores, list):
-                scores = {}
-            overall = scores.get("overall", {}) if isinstance(scores, dict) else {}
-            score = overall.get("score", 5) if isinstance(overall, dict) else 5
-            response["decision"] = "APPROVE" if score >= 7 else ("REVISE" if score >= 5 else "REJECT")
+        try:
+            raw = await provider.generate(messages)
+            content = raw.get("choices", [{}])[0].get("message", {}).get("content", "")
 
-        edges = subgraph.get("edges", [])
-        if edges:
-            avg_conf = sum(e.get("strength", 0.5) for e in edges) / len(edges)
-            response["computed_metrics"] = {
-                "avg_edge_confidence": round(avg_conf, 3),
-                "total_edges": len(edges), "total_nodes": len(subgraph.get("nodes", []))
-            }
+            parsed = self._extract_json(content, "critic")
+            decision = parsed.get("decision", "REVISE").upper()
+            if decision not in ("APPROVE", "REVISE", "REJECT"):
+                decision = "REVISE"
 
-        response["_metadata"] = {"agent": "critic", "framework": "SciAgents-evaluation"}
-        return response
+            reasoning = parsed.get("reasoning", "")
+            confidence = {"APPROVE": 0.9, "REVISE": 0.5, "REJECT": 0.2}.get(decision, 0.5)
 
-    def should_continue_iteration(self, evaluation: dict, max_iters: int = 3, current: int = 1) -> bool:
-        """Determine if another revision iteration is needed."""
-        decision = evaluation.get("decision", "REVISE")
-        if decision == "APPROVE":
-            return False
-        return current < max_iters
+            return self._result(
+                {"decision": decision, "reasoning": reasoning},
+                confidence=confidence,
+            )
+        except Exception as e:
+            logger.warning(f"Critic evaluation failed: {e}")
+            return self._result(
+                {"decision": "REVISE", "reasoning": f"Critic could not evaluate: {e}"},
+                confidence=0.4,
+            )
 
-    def get_revision_guidance(self, evaluation: dict) -> dict:
-        """Extract structured revision guidance from evaluation."""
-        weaknesses = evaluation.get("weaknesses", [])
-        scores = evaluation.get("scores", {})
-        # Handle case where scores/weaknesses are not the expected types
-        if not isinstance(scores, dict):
-            scores = {}
-        if not isinstance(weaknesses, list):
-            weaknesses = []
-        
-        return {
-            "required_revisions": evaluation.get("required_revisions", []),
-            "improvement_suggestions": evaluation.get("improvement_suggestions", []),
-            "weaknesses_to_address": [
-                w for w in weaknesses
-                if isinstance(w, dict) and w.get("severity") in ["critical", "major"]
-            ],
-            "focus_areas": [
-                cat for cat, data in scores.items()
-                if isinstance(data, dict) and data.get("score", 10) < 6
-            ]
-        }
+    async def run_stream(self, state: dict) -> AsyncIterator[str]:
+        result = await self.run(state)
+        yield json.dumps(result.output)

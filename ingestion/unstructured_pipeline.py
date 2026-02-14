@@ -1,27 +1,19 @@
 """
-Unstructured Data Pipeline - RAG for Lab Notes & Documents
-============================================================
+Unstructured Data Pipeline — Document Processing for AI MINDS
+==============================================================
 
-Handles ingestion and retrieval of unstructured biological data:
-- Lab notes (text, handwritten → OCR)
-- Paper abstracts and full texts
-- PDF documents
-- Protocol documents
-- Experimental observations
+Handles ingestion of personal data:
+- PDFs, text files, markdown documents
+- Images (via OCR)
+- JSON structured notes
+- Any text-based file
 
-This addresses the "Unstructured Data Pipeline" requirement:
-- Parse/OCR documents
-- Chunk into meaningful segments
-- Index into vector database
-- Enable retrieval-augmented generation (RAG)
-
-Architecture:
-1. Document Loader: Read various formats (PDF, DOCX, TXT, images)
-2. OCR Engine: Extract text from images/scanned docs
-3. Text Chunker: Split into semantically meaningful chunks
-4. Metadata Extractor: Pull out key entities (molecules, targets, dates)
-5. Embedder: Generate vectors for each chunk
-6. Indexer: Store in Qdrant
+Pipeline:
+1. Read file (PDF/text/image/JSON)
+2. Extract text (OCR for images)
+3. Chunk into semantic segments
+4. Extract key entities (dates, amounts, names)
+5. Return structured chunks ready for embedding
 """
 
 import logging
@@ -72,13 +64,10 @@ class LabNote:
     content: str
     date: Optional[str] = None
     author: Optional[str] = None
-    experiment_id: Optional[str] = None
-    protocol: Optional[str] = None
-    observations: List[str] = field(default_factory=list)
-    conclusions: List[str] = field(default_factory=list)
-    molecules: List[str] = field(default_factory=list)  # SMILES mentioned
-    targets: List[str] = field(default_factory=list)  # Proteins/targets mentioned
-    measurements: List[Dict[str, Any]] = field(default_factory=list)
+    category: Optional[str] = None
+    summary: Optional[str] = None
+    key_points: List[str] = field(default_factory=list)
+    action_items: List[str] = field(default_factory=list)
     tags: List[str] = field(default_factory=list)
     
     def to_dict(self) -> Dict[str, Any]:
@@ -88,13 +77,10 @@ class LabNote:
             "content": self.content,
             "date": self.date,
             "author": self.author,
-            "experiment_id": self.experiment_id,
-            "protocol": self.protocol,
-            "observations": self.observations,
-            "conclusions": self.conclusions,
-            "molecules": self.molecules,
-            "targets": self.targets,
-            "measurements": self.measurements,
+            "category": self.category,
+            "summary": self.summary,
+            "key_points": self.key_points,
+            "action_items": self.action_items,
             "tags": self.tags,
         }
 
@@ -118,9 +104,10 @@ class UnstructuredDataPipeline:
     """
     
     # Patterns for entity extraction
-    SMILES_PATTERN = r'[A-Za-z0-9@+\-\[\]\(\)\\\/%=#$]{10,}'  # Simplified SMILES pattern
-    PROTEIN_PATTERN = r'\b[A-Z][A-Z0-9]{2,}\b'  # Gene/protein names
-    MEASUREMENT_PATTERN = r'(\d+(?:\.\d+)?)\s*(nM|µM|uM|mM|M|mg|µg|ug|g|kg|%|IC50|EC50|Ki|Kd)'
+    EMAIL_PATTERN = r'[\w.+-]+@[\w-]+\.[\w.-]+'
+    URL_PATTERN = r'https?://[^\s<>"]+'
+    PHONE_PATTERN = r'\b\d{3}[-.\s]?\d{3}[-.\s]?\d{4}\b'
+    MONEY_PATTERN = r'\$\d+(?:,\d{3})*(?:\.\d{2})?|\b\d+(?:\.\d{2})?\s*(?:USD|EUR|GBP|MAD)\b'
     DATE_PATTERN = r'\d{4}[-/]\d{2}[-/]\d{2}|\d{2}[-/]\d{2}[-/]\d{4}'
     
     def __init__(
@@ -137,7 +124,7 @@ class UnstructuredDataPipeline:
             chunk_size: Target chunk size in characters
             chunk_overlap: Overlap between chunks
             use_ocr: Enable OCR for images
-            extract_entities: Extract molecules/proteins/measurements
+            extract_entities: Extract useful entities (emails, dates, URLs, etc.)
         """
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
@@ -244,59 +231,46 @@ class UnstructuredDataPipeline:
                 content=note.get("content", note.get("notes", "")),
                 date=note.get("date"),
                 author=note.get("author"),
-                experiment_id=note.get("experiment_id"),
-                protocol=note.get("protocol"),
-                observations=note.get("observations", []),
-                conclusions=note.get("conclusions", []),
-                molecules=note.get("molecules", []),
-                targets=note.get("targets", []),
-                measurements=note.get("measurements", []),
+                category=note.get("category"),
+                summary=note.get("summary"),
+                key_points=note.get("key_points", []),
+                action_items=note.get("action_items", []),
                 tags=note.get("tags", []),
             )
         
-        # Build full text from lab note
+        # Build full text from note
         text_parts = [f"# {note.title}"]
         
         if note.date:
             text_parts.append(f"Date: {note.date}")
         if note.author:
             text_parts.append(f"Author: {note.author}")
-        if note.experiment_id:
-            text_parts.append(f"Experiment: {note.experiment_id}")
+        if note.category:
+            text_parts.append(f"Category: {note.category}")
         
         text_parts.append("")
         text_parts.append(note.content)
         
-        if note.protocol:
-            text_parts.append(f"\n## Protocol\n{note.protocol}")
+        if note.key_points:
+            text_parts.append("\n## Key Points")
+            for kp in note.key_points:
+                text_parts.append(f"- {kp}")
         
-        if note.observations:
-            text_parts.append("\n## Observations")
-            for obs in note.observations:
-                text_parts.append(f"- {obs}")
-        
-        if note.conclusions:
-            text_parts.append("\n## Conclusions")
-            for conc in note.conclusions:
-                text_parts.append(f"- {conc}")
-        
-        if note.measurements:
-            text_parts.append("\n## Measurements")
-            for m in note.measurements:
-                text_parts.append(f"- {m.get('name', 'Value')}: {m.get('value')} {m.get('unit', '')}")
+        if note.action_items:
+            text_parts.append("\n## Action Items")
+            for ai in note.action_items:
+                text_parts.append(f"- [ ] {ai}")
         
         full_text = "\n".join(text_parts)
         
         # Enrich metadata
         enriched_metadata = {
             **metadata,
-            "lab_note_id": note.id,
+            "note_id": note.id,
             "title": note.title,
             "date": note.date,
             "author": note.author,
-            "experiment_id": note.experiment_id,
-            "molecules": note.molecules,
-            "targets": note.targets,
+            "category": note.category,
             "tags": note.tags,
         }
         
@@ -566,145 +540,19 @@ class UnstructuredDataPipeline:
         return segments
     
     def _extract_entities(self, text: str) -> Dict[str, List[str]]:
-        """Extract molecules, proteins, and measurements from text."""
+        """Extract useful entities from personal data: emails, URLs, dates, money, phones."""
         entities = {
-            "molecules": [],
-            "proteins": [],
-            "measurements": [],
+            "emails": [],
+            "urls": [],
             "dates": [],
+            "money": [],
+            "phones": [],
         }
-        
-        # Extract potential SMILES (very rough - would need validation)
-        smiles_matches = re.findall(self.SMILES_PATTERN, text)
-        for match in smiles_matches:
-            # Basic validation: must have typical SMILES characters
-            if any(c in match for c in ['=', '(', '[', 'c', 'C', 'N', 'O']):
-                entities["molecules"].append(match)
-        
-        # Extract protein/gene names
-        protein_matches = re.findall(self.PROTEIN_PATTERN, text)
-        # Filter common false positives
-        skip_words = {'THE', 'AND', 'FOR', 'WAS', 'WERE', 'HAS', 'HAD', 'ARE', 'NOT', 'BUT'}
-        for match in protein_matches:
-            if match not in skip_words and len(match) >= 3:
-                entities["proteins"].append(match)
-        
-        # Extract measurements
-        measurement_matches = re.findall(self.MEASUREMENT_PATTERN, text)
-        for value, unit in measurement_matches:
-            entities["measurements"].append(f"{value} {unit}")
-        
-        # Extract dates
-        date_matches = re.findall(self.DATE_PATTERN, text)
-        entities["dates"] = date_matches
-        
-        # Deduplicate
-        for key in entities:
-            entities[key] = list(set(entities[key]))[:10]  # Max 10 per category
-        
+
+        entities["emails"] = list(set(re.findall(self.EMAIL_PATTERN, text)))[:10]
+        entities["urls"] = list(set(re.findall(self.URL_PATTERN, text)))[:10]
+        entities["dates"] = list(set(re.findall(self.DATE_PATTERN, text)))[:10]
+        entities["money"] = list(set(re.findall(self.MONEY_PATTERN, text)))[:10]
+        entities["phones"] = list(set(re.findall(self.PHONE_PATTERN, text)))[:10]
+
         return entities
-
-
-class RAGRetriever:
-    """
-    Retrieval-Augmented Generation support for unstructured data.
-    
-    Combines vector search with context augmentation for better
-    question answering over lab notes and documents.
-    """
-    
-    def __init__(
-        self,
-        qdrant_service,
-        encoder,
-        max_context_chunks: int = 5,
-    ):
-        """
-        Initialize RAG retriever.
-        
-        Args:
-            qdrant_service: QdrantService for vector search
-            encoder: Encoder for query embedding
-            max_context_chunks: Max chunks to include in context
-        """
-        self.qdrant = qdrant_service
-        self.encoder = encoder
-        self.max_context_chunks = max_context_chunks
-    
-    def retrieve_context(
-        self,
-        query: str,
-        filters: Optional[Dict[str, Any]] = None,
-        min_score: float = 0.5,
-    ) -> List[Dict[str, Any]]:
-        """
-        Retrieve relevant context chunks for a query.
-        
-        Args:
-            query: User query
-            filters: Optional filters (source_type, date range, etc.)
-            min_score: Minimum similarity score
-            
-        Returns:
-            List of relevant chunks with metadata
-        """
-        # Search for relevant chunks
-        results = self.qdrant.search(
-            query=query,
-            modality="text",
-            limit=self.max_context_chunks * 2,  # Get more, filter later
-        )
-        
-        context_chunks = []
-        for r in results:
-            if r.score < min_score:
-                continue
-            
-            # Apply filters
-            if filters:
-                if filters.get("source_type"):
-                    if r.metadata.get("source_type") != filters["source_type"]:
-                        continue
-                if filters.get("experiment_id"):
-                    if r.metadata.get("experiment_id") != filters["experiment_id"]:
-                        continue
-            
-            context_chunks.append({
-                "content": r.content,
-                "score": r.score,
-                "source": r.metadata.get("source_file", "unknown"),
-                "source_type": r.metadata.get("source_type", "unknown"),
-                "metadata": r.metadata,
-            })
-            
-            if len(context_chunks) >= self.max_context_chunks:
-                break
-        
-        return context_chunks
-    
-    def build_augmented_prompt(
-        self,
-        query: str,
-        context_chunks: List[Dict[str, Any]],
-    ) -> str:
-        """
-        Build an augmented prompt with retrieved context.
-        
-        This can be used with an LLM for question answering.
-        """
-        prompt_parts = [
-            "Based on the following lab notes and documents, answer the question.\n",
-            "---\n",
-            "CONTEXT:\n",
-        ]
-        
-        for i, chunk in enumerate(context_chunks, 1):
-            source = chunk.get("source", "Unknown")
-            content = chunk.get("content", "")
-            prompt_parts.append(f"\n[Source {i}: {source}]\n{content}\n")
-        
-        prompt_parts.append("---\n")
-        prompt_parts.append(f"QUESTION: {query}\n")
-        prompt_parts.append("ANSWER:")
-        
-        return "".join(prompt_parts)
