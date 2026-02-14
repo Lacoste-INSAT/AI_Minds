@@ -1,0 +1,45 @@
+# Synapsis Backend — Python Dependencies
+
+# === Core Framework ===
+fastapi>=0.115
+uvicorn[standard]>=0.34
+pydantic>=2.10
+pydantic-settings>=2.7
+python-dotenv>=1.0
+
+# === LLM Client ===
+httpx>=0.28
+
+# === Vector Store ===
+qdrant-client>=1.13
+
+# === Embeddings ===
+sentence-transformers>=3.4
+numpy>=1.26
+
+# === Sparse Search ===
+rank-bm25>=0.2.2
+
+# === Knowledge Graph ===
+networkx>=3.4
+
+# === NLP / NER (Person 3) ===
+# spacy>=3.8
+
+# === Document Parsing (Person 3) ===
+# pymupdf>=1.25
+# python-docx>=1.1
+# Pillow>=11.0
+# pytesseract>=0.3
+
+# === Audio Transcription (Person 3) ===
+# faster-whisper>=1.1
+
+# === File Watching (Person 3) ===
+# watchdog>=6.0
+
+# === Scheduling ===
+apscheduler>=3.10
+
+# === Logging ===
+structlog>=24.4
