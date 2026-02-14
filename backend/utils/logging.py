@@ -2,12 +2,14 @@
 Synapsis Backend — Structured Logging (structlog)
 """
 
+import logging
 import sys
 import structlog
 
 
 def setup_logging(debug: bool = False):
     """Configure structlog for JSON structured logging."""
+    log_level = logging.DEBUG if debug else logging.INFO
     structlog.configure(
         processors=[
             structlog.contextvars.merge_contextvars,
@@ -21,9 +23,7 @@ def setup_logging(debug: bool = False):
                 else structlog.processors.JSONRenderer()
             ),
         ],
-        wrapper_class=structlog.make_filtering_bound_logger(
-            structlog.get_config().get("min_level", 0)
-        ),
+        wrapper_class=structlog.make_filtering_bound_logger(log_level),
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(file=sys.stderr),
         cache_logger_on_first_use=True,

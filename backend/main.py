@@ -5,7 +5,6 @@ Main entry point. Binds to 127.0.0.1:8000 (localhost only, air-gapped).
 
 from __future__ import annotations
 
-import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI

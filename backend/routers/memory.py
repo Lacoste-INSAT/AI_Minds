@@ -52,7 +52,7 @@ async def get_timeline(
     category: Optional[str] = Query(None, description="Filter by category"),
     modality: Optional[str] = Query(None, description="Filter by modality"),
     search: Optional[str] = Query(None, description="Search in content"),
-    sort: str = Query("desc", regex="^(asc|desc)$"),
+    sort: str = Query("desc", pattern="^(asc|desc)$"),
 ):
     """Return memories sorted by date with filters."""
     offset = (page - 1) * page_size
@@ -224,22 +224,12 @@ async def get_memory_detail(memory_id: str):
 def _get_document_entities(document_id: str) -> list[str]:
     """Get entity names associated with a document's chunks."""
     with get_db() as conn:
-        # Get chunk IDs for this document
-        chunk_rows = conn.execute(
-            "SELECT id FROM chunks WHERE document_id = ?", (document_id,)
+        # Single query: join chunks → nodes via source_chunks LIKE match
+        rows = conn.execute(
+            """SELECT DISTINCT n.name
+               FROM nodes n
+               JOIN chunks c ON c.document_id = ?
+               WHERE n.source_chunks LIKE '%' || c.id || '%'""",
+            (document_id,),
         ).fetchall()
-        chunk_ids = {r["id"] for r in chunk_rows}
-
-    if not chunk_ids:
-        return []
-
-    entities = set()
-    with get_db() as conn:
-        nodes = conn.execute("SELECT name, source_chunks FROM nodes").fetchall()
-        for node in nodes:
-            if node["source_chunks"]:
-                node_chunks = set(node["source_chunks"].split(","))
-                if node_chunks & chunk_ids:
-                    entities.add(node["name"])
-
-    return list(entities)
+    return [r["name"] for r in rows]

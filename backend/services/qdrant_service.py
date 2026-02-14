@@ -129,18 +129,20 @@ def get_collection_info() -> dict:
 
 def delete_by_document_id(document_id: str):
     """Delete all vectors associated with a document."""
-    from qdrant_client.models import Filter, FieldCondition, MatchValue
+    from qdrant_client.models import Filter, FieldCondition, MatchValue, FilterSelector
 
     client = _get_client()
     client.delete(
         collection_name=settings.qdrant_collection,
-        points_selector=Filter(
-            must=[
-                FieldCondition(
-                    key="document_id",
-                    match=MatchValue(value=document_id),
-                )
-            ]
+        points_selector=FilterSelector(
+            filter=Filter(
+                must=[
+                    FieldCondition(
+                        key="document_id",
+                        match=MatchValue(value=document_id),
+                    )
+                ]
+            )
         ),
     )
     logger.debug("qdrant.deleted_by_document", document_id=document_id)

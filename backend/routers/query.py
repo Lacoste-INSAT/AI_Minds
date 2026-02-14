@@ -68,8 +68,7 @@ async def stream_answer(websocket: WebSocket):
 
             context = ""
             if results:
-                from backend.services.reasoning import assemble_context as build_ctx
-                context = build_ctx(results)
+                context = assemble_context(results)
 
             # Step 2: Stream LLM response
             from backend.services.reasoning import REASONING_PROMPT

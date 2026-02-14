@@ -63,10 +63,11 @@ class OllamaClient:
             if resp.status_code != 200:
                 return None
             data = resp.json()
-            available = {m["name"].split(":")[0] if ":" not in m["name"] else m["name"] for m in data.get("models", [])}
-            # Also add full model names
+            available: set[str] = set()
             for m in data.get("models", []):
-                available.add(m["name"])
+                full_name = m["name"]          # e.g. "phi4-mini:latest"
+                available.add(full_name)          # exact name
+                available.add(full_name.split(":")[0])  # base name without tag
 
             for i, model in enumerate(self.models):
                 # Check various name formats

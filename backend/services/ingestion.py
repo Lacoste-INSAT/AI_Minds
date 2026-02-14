@@ -32,12 +32,13 @@ class IngestionState:
 
     def get_status(self) -> dict[str, Any]:
         return {
-            "total_files_processed": self.total_files_processed,
-            "total_chunks_stored": self.total_chunks_stored,
             "queue_depth": self.queue_depth,
-            "is_scanning": self.is_scanning,
+            "files_processed": self.total_files_processed,
+            "files_failed": len(self.errors),
+            "files_skipped": 0,
+            "last_scan_time": None,
+            "is_watching": len(self.watched_directories) > 0,
             "watched_directories": self.watched_directories,
-            "recent_errors": self.errors[-10:],
         }
 
 
