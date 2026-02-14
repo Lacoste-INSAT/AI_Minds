@@ -5,6 +5,30 @@
 
 ---
 
+## PANEL DISCUSSION INSIGHTS (Filtered)
+
+From the AI MINDS panel discussion. These are NOT from judges — take with a grain of salt. But useful signal.
+
+### What validated our approach:
+- **Graph representation > flat vectors**: Dr. Racha's point about geometric deep learning — "if you represent structured data as a flat vector, a lot of structure is lost." This is literally the argument for our knowledge graph over pure vector search. Use this framing in our pitch.
+- **Agentic AI is the trend**: Ilyes said "anything after GPT-3.5 has been beaten by agentic" — orchestrating multiple specialized agents beats one big model call. Our multi-agent pipeline (planner → retriever → reasoner → critic) IS the agentic approach.
+- **Local/on-premise is a selling point**: Ilyes talked about Saudi/Qatari government contracts where data must stay on-premise, behind locked doors, no internet. Frame our local-first constraint as a feature.
+- **SLMs + good architecture > big models**: "Ford computed SLMs to make a task that took 2s to microseconds." The value is in our effort/architecture, not model size. With smaller models, "your value comes from your effort, otherwise nothing works."
+- **Trust and risk matter**: Multiple panelists emphasized trustworthiness, uncertainty handling, not being overconfident. Our critic agent + confidence scores + source citation directly address this.
+
+### What we should NOT do (based on panel):
+- Don't claim our system is trustworthy for medical/legal decisions — that's a regulated domain trap
+- Don't over-promise on generative AI capabilities — the medical panelist was skeptical of generated data
+- Don't ignore energy/efficiency — small models are also a sustainability argument
+
+### What's noise (interesting but not actionable for us):
+- Quantum computing in drug discovery — irrelevant to our project
+- Neuromorphic neural networks — too futuristic
+- Specific healthcare compliance regulations — we're not building a medical tool
+- "Organic AI, physics-inspired neural networks" — research frontier, not hackathon material
+
+---
+
 ## CRITICAL DECISIONS (Must resolve before implementation)
 
 ### RQ-1: Which LLM?
@@ -150,7 +174,14 @@ Step 4: LLM synthesizes final answer
 - CPU-only laptop → Need quantized model (Q4_K_M), 5-10 second responses
 - Whose laptop? Dev machine or presentation machine?
 
-**ACTION**: Identify the exact laptop we'll demo on. Test inference speed on that machine.
+**From panel**: Ilyes explicitly said "I encourage you to know the difference between CPU and GPU models... you will realize how stupid the model is [on CPU]." This is NOT hypothetical — if we demo on CPU-only hardware with an unquantized model, the system will be painfully slow or produce garbage.
+
+**ACTION**: 
+1. Identify the exact laptop we'll demo on
+2. Test inference speed on that machine
+3. If CPU-only: MUST use quantized GGUF (Q4_K_M or Q5_K_M), expect 5-10s latency
+4. If GPU (even a modest one): Can use larger quantization, expect 2-3s latency
+5. Pre-compute everything possible (embeddings, graph) so only the LLM call is live
 
 ---
 
@@ -279,3 +310,19 @@ This makes multi-hop queries natural: "What did Sarah say about the marketing bu
    - Measure quality
 
 **AFTER all 6 are done → Start implementation (Phase 1 from ARCHITECTURE.md)**
+
+---
+
+## THINGS TO DEEPLY UNDERSTAND (Don't Just Plug In)
+
+Panel emphasized: "people deploy pipelines without understanding how things work fundamentally." Before writing code, each team member should be able to explain:
+
+- [ ] How cosine similarity works and why we normalize embeddings
+- [ ] What sentence-transformers actually does (not just `model.encode()`)
+- [ ] How Qdrant indexes vectors (HNSW) and why top-K can miss relevant results
+- [ ] What quantization does to model quality (Q4 vs Q5 vs Q8 vs FP16)
+- [ ] How Ollama serves models and what the /api/chat endpoint actually does
+- [ ] Why graph traversal finds things vector search can't (concrete example)
+- [ ] What "grounded" means — why hallucination happens and how our critic catches it
+
+**If a judge asks "why does your system do X?" and the answer is "because the tutorial said so" — that's a fail.**

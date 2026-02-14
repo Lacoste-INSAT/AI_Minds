@@ -19,6 +19,43 @@
 
 **Our system must do ALL of the right column.**
 
+### 1.1 Why Graph > Flat Vectors (The Theoretical Argument)
+
+The fundamental insight from geometric deep learning: **when you flatten structured data into a flat vector, you lose structure, and the results suffer**. This is well-established in the ML literature — molecular structures represented as graphs outperform flat-vector representations (see AlphaFold). The same principle applies to personal knowledge:
+
+- Your notes, meetings, people, and projects form a **graph** — entities connected by relationships
+- Flattening them into isolated embedding vectors and doing top-K cosine similarity throws away the structure
+- A knowledge graph preserves: who said what, when, how ideas connect, how beliefs evolved
+- Vector search finds *similar text*. Graph traversal finds *related knowledge*. Both together win.
+
+**This is our core architectural thesis. Every other team will do flat vectors. We do graph + vectors.**
+
+### 1.2 Local-First Is a Feature, Not a Constraint
+
+The competition rules say "no proprietary APIs, local model < 4B." Most teams will treat this as a limitation. We frame it as a **feature**:
+
+- **Privacy**: Zero data leaves the device. No cloud. No leaks. In regulated industries (healthcare, government), on-premise deployment is *required*, not optional.
+- **Cost**: No API bills. No token metering. Run forever for free after setup.
+- **Sovereignty**: The user owns their data AND their AI. No vendor lock-in.
+- **Efficiency**: Small, specialized models with good architecture beat bloated general models for specific tasks. The value is in the architecture (agentic orchestration, graph reasoning), not the model size.
+
+**Demo talking point**: "Our system runs entirely on your laptop. Your data never leaves your device. That's not a compromise — that's the point."
+
+### 1.3 Agentic Architecture
+
+Our system is **agentic** — not a single model call, but an orchestrated pipeline of specialized agents:
+
+| Agent | Role | Why Separate |
+|---|---|---|
+| **Ingestion Agent** | Extract entities, build graph | Runs async, different prompt than QA |
+| **Query Planner** | Classify query type, decide retrieval strategy | Keeps reasoning modular |
+| **Retrieval Agent** | Hybrid vector + graph search | Deterministic, no LLM needed |
+| **Reasoning Agent** | Synthesize answer from retrieved context | Core LLM task |
+| **Critic Agent** | Verify answer against sources | Independent check, catches hallucination |
+| **Proactive Agent** | Generate digests, detect patterns | Runs on schedule, not per-query |
+
+The value is in how these agents are **orchestrated**, not in any single model call. This is what separates a cognitive assistant from a chatbot.
+
 ---
 
 ## 2. High-Level Architecture
@@ -353,3 +390,24 @@ Every architectural decision maps to a scoring criterion:
 - ❌ Integration with 10+ services
 - ❌ Browser extension (unless time permits)
 - ❌ Custom model training/fine-tuning
+
+---
+
+## 9. Presentation Talking Points (Pitch Ammunition)
+
+These are arguments to have ready during the pitch and Q&A. They frame our technical choices as intentional strengths.
+
+### "Why local and not cloud?"
+> "Privacy by design. In regulated industries — healthcare, government, finance — data can't leave the premises. Our system runs behind closed doors. No internet required. That's not a limitation of this competition — that's a real-world requirement we're already solving."
+
+### "Why a small model?"
+> "Because the intelligence isn't in the model — it's in the architecture. We use an agentic pipeline: specialized agents for ingestion, reasoning, verification. A 3B model doing one focused task well beats a 70B model doing everything poorly. The value comes from our graph reasoning and orchestration, not raw parameter count."
+
+### "How is this different from a chatbot?"
+> "A chatbot answers when asked. Our system builds understanding over time. It tracks how your beliefs evolve, detects contradictions, discovers connections you didn't ask about, and shows you the reasoning path — not just the answer. It's the difference between a search engine and a research assistant."
+
+### "Why a knowledge graph and not just vector search?"
+> "Same reason molecular biology uses graph representations instead of flat vectors — you lose structure. Your knowledge has structure: people, projects, decisions, timelines. Flatten it into embeddings and you can find similar text, but you can't traverse relationships. Our graph lets us answer 'What did Sarah say about marketing in meetings where budget was discussed?' — that's a graph traversal, not a cosine similarity."
+
+### "What about risk / trust / reliability?"
+> "Every answer includes source citations, confidence scores, and passes through an independent verification agent. If our system isn't confident, it says so. If sources conflict, it surfaces the contradiction. We don't optimize for sounding confident — we optimize for being trustworthy."
