@@ -37,7 +37,6 @@ DEFAULT_CONFIG: Dict[str, Any] = {
         "~$*",
     ],
     "max_file_size_mb": 50,
-    "scan_interval_seconds": 30,
     "rate_limit_files_per_minute": 10,
 }
 
