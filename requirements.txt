@@ -1,0 +1,38 @@
+# =============================================================================
+# AI MINDS — Dependencies
+# =============================================================================
+# Personal Cognitive Assistant — 24h Hackathon
+# Local-first, open-source ONLY (NO OpenAI/Anthropic/Gemini/Grok APIs)
+# =============================================================================
+
+# --- Core ---
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.0
+pydantic-settings>=2.0
+
+# --- Async HTTP ---
+httpx>=0.25.0
+
+# --- Vector DB ---
+qdrant-client>=1.7.0
+
+# --- Embeddings (local) ---
+sentence-transformers>=2.2.0        # all-MiniLM-L6-v2 (384-dim)
+transformers>=4.36.0
+torch>=2.1.0
+
+# --- Document Processing ---
+PyPDF2>=3.0.0                        # PDF text extraction
+python-docx>=1.0.0                   # DOCX extraction
+Pillow>=10.0.0                       # Image loading
+
+# --- OCR (optional) ---
+# pytesseract>=0.3.10               # Uncomment if Tesseract is installed
+
+# --- Search & Reranking ---
+numpy>=1.24.0
+scikit-learn>=1.3.0
+
+# --- Utilities ---
+python-dotenv>=1.0.0
