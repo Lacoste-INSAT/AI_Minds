@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from fastapi import APIRouter, Body, WebSocket, WebSocketDisconnect
 import structlog
 
 from backend.models.schemas import IngestionStatusResponse
@@ -33,7 +33,7 @@ async def get_ingestion_status():
 
 
 @router.post("/scan")
-async def trigger_scan(directories: list[str] | None = None):
+async def trigger_scan(directories: list[str] | None = Body(default=None)):
     """
     Manually trigger a directory scan.
 

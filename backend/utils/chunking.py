@@ -44,7 +44,9 @@ def chunk_text(
                 current = ""
 
             # Force-split the long sentence
-            for i in range(0, len(sentence), chunk_size - overlap):
+            # Guard against overlap >= chunk_size (step would be 0 or negative)
+            step = max(chunk_size - overlap, 1)
+            for i in range(0, len(sentence), step):
                 fragment = sentence[i : i + chunk_size]
                 if fragment.strip():
                     chunks.append(fragment.strip())
@@ -55,9 +57,18 @@ def chunk_text(
         if len(candidate) > chunk_size and current.strip():
             chunks.append(current.strip())
 
-            # Overlap: seed next chunk with tail of current
-            if overlap > 0 and len(current) > overlap:
-                current = current[-overlap:].lstrip() + " " + sentence
+            # Overlap: seed next chunk with tail of current, but ensure we
+            # do not exceed chunk_size when combining overlap and sentence.
+            if overlap > 0:
+                # Room available for overlap tail, accounting for a space.
+                available = chunk_size - len(sentence) - 1
+                if available > 0 and current:
+                    tail_len = min(overlap, available, len(current))
+                    tail = current[-tail_len:].lstrip()
+                    current = (tail + " " + sentence).strip()
+                else:
+                    # No safe room for overlap; start fresh with sentence.
+                    current = sentence
             else:
                 current = sentence
         else:

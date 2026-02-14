@@ -40,7 +40,7 @@ class TestFullPipelineWithMocks:
         )
         
         # Mock the Ollama client to avoid needing actual LLM
-        with patch("reasoning.reasoning.cpumodel.llm_agent.generate_completion") as mock_llm:
+        with patch("backend.reasoning.cpumodel.llm_agent.generate_completion") as mock_llm:
             # Mock synthesis response
             from backend.reasoning.cpumodel.models import LLMResponse
             mock_llm.side_effect = [

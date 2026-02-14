@@ -211,7 +211,7 @@ class TestLLMAgentRealData:
             graph_count=0,
         )
         
-        with patch("reasoning.reasoning.cpumodel.llm_agent.generate_completion") as mock_llm:
+        with patch("backend.reasoning.cpumodel.llm_agent.generate_completion") as mock_llm:
             # Mock LLM responses
             mock_llm.side_effect = [
                 # Synthesis response
@@ -270,7 +270,7 @@ class TestAccuracyEvaluation:
             graph_count=0,
         )
         
-        with patch("reasoning.reasoning.cpumodel.llm_agent.generate_completion") as mock_llm:
+        with patch("backend.reasoning.cpumodel.llm_agent.generate_completion") as mock_llm:
             # Create an answer that includes expected terms
             answer_content = f"Based on the sources: {test_case['golden_answer']} [Source 1]"
             

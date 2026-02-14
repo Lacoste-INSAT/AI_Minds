@@ -121,7 +121,7 @@ def start_file_watcher(directories: list[str]) -> None:
         from ingestion.observer.handler import IngestionHandler
         from ingestion.observer.checksum import ChecksumStore
         from ingestion.observer.config import resolve_directories
-        from ingestion.observer.scanner import initial_scan
+
     except ImportError as exc:
         logger.warning("ingestion.import_failed", error=str(exc),
                         msg="watchdog / ingestion.observer not available")
@@ -146,13 +146,13 @@ def start_file_watcher(directories: list[str]) -> None:
     _observer.start()
     logger.info("ingestion.watchdog_started", directories=[str(d) for d in resolved])
 
-    # 2 — background initial scan (catches offline changes)
-    threading.Thread(
-        target=initial_scan,
-        args=(resolved, config, _checksum_store, _event_queue),
-        daemon=True,
-        name="synapsis-initial-scan",
-    ).start()
+    # NOTE:
+    # We intentionally do NOT invoke `initial_scan` here.
+    # The default implementation in `ingestion.observer.scanner.initial_scan`
+    # only indexes checksums and does not enqueue events, while this backend
+    # relies on queued events to trigger ingestion. Running it here would
+    # cause existing files to be marked as seen without ever being ingested.
+    # Use POST /ingestion/scan for manual baseline ingestion.
 
     # 3 — async event consumer
     try:
@@ -267,15 +267,30 @@ async def ingest_file(file_path: str) -> dict[str, Any] | None:
         logger.debug("ingestion.file_missing", path=file_path)
         return None
 
-    # --- 1. Checksum dedup ---
+    # --- 1. Checksum / source_uri dedup & update handling ---
+    source_uri = str(path)
     checksum = await asyncio.to_thread(file_checksum, file_path)
+    existing_doc_id: str | None = None
     with get_db() as conn:
+        # Look up existing document by source_uri to avoid global checksum dedup.
         existing = conn.execute(
-            "SELECT id FROM documents WHERE checksum = ?", (checksum,)
+            "SELECT id, checksum FROM documents WHERE source_uri = ?",
+            (source_uri,),
         ).fetchone()
         if existing:
-            logger.debug("ingestion.skipped_duplicate", path=file_path)
-            return None
+            existing_doc_id, existing_checksum = existing["id"], existing["checksum"]
+            if existing_checksum == checksum:
+                # Same file (by source_uri) with identical content: skip re-ingest.
+                logger.debug("ingestion.skipped_duplicate", path=file_path)
+                return None
+            # Same source_uri but different checksum: treat as an update — delete old data.
+            from backend.services.qdrant_service import delete_by_document_id
+            conn.execute("DELETE FROM chunks WHERE document_id = ?", (existing_doc_id,))
+            conn.execute("DELETE FROM documents WHERE id = ?", (existing_doc_id,))
+            try:
+                await asyncio.to_thread(delete_by_document_id, existing_doc_id)
+            except Exception:
+                pass
 
     # --- 2. Parse ---
     try:
@@ -300,7 +315,7 @@ async def ingest_file(file_path: str) -> dict[str, Any] | None:
             """INSERT INTO documents
                (id, filename, modality, source_type, source_uri, checksum, ingested_at, status)
                VALUES (?, ?, ?, 'auto_scan', ?, ?, ?, 'processing')""",
-            (doc_id, path.name, modality, str(path), checksum, now),
+            (doc_id, path.name, modality, source_uri, checksum, now),
         )
 
     # --- 4. Chunk ---
@@ -388,6 +403,10 @@ async def ingest_file(file_path: str) -> dict[str, Any] | None:
         )
 
     # Rebuild BM25
+    # NOTE: build_bm25_index() rebuilds the full corpus from SQLite each time.
+    # This is increasingly expensive as the corpus grows. For production,
+    # consider debouncing/scheduling rebuilds (e.g., once after a scan batch)
+    # or implementing incremental updates.
     try:
         await asyncio.to_thread(build_bm25_index)
     except Exception:
@@ -479,21 +498,25 @@ async def _handle_deletion(file_path: str) -> None:
     from backend.services.retrieval import build_bm25_index
 
     with get_db() as conn:
-        doc = conn.execute(
+        # Fetch ALL documents for this source_uri (handles duplicates if any exist)
+        docs = conn.execute(
             "SELECT id FROM documents WHERE source_uri = ?", (file_path,)
-        ).fetchone()
+        ).fetchall()
 
-        if not doc:
+        if not docs:
             return
 
-        doc_id = doc["id"]
-        conn.execute("DELETE FROM chunks WHERE document_id = ?", (doc_id,))
-        conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
+        doc_ids = [d["id"] for d in docs]
+        for doc_id in doc_ids:
+            conn.execute("DELETE FROM chunks WHERE document_id = ?", (doc_id,))
+            conn.execute("DELETE FROM documents WHERE id = ?", (doc_id,))
 
-    try:
-        await asyncio.to_thread(delete_by_document_id, doc_id)
-    except Exception as exc:
-        logger.warning("ingestion.qdrant_delete_failed", error=str(exc))
+    # Delete from Qdrant for all document IDs
+    for doc_id in doc_ids:
+        try:
+            await asyncio.to_thread(delete_by_document_id, doc_id)
+        except Exception as exc:
+            logger.warning("ingestion.qdrant_delete_failed", doc_id=doc_id, error=str(exc))
 
     try:
         reload_graph()
@@ -505,8 +528,8 @@ async def _handle_deletion(file_path: str) -> None:
     except Exception:
         pass
 
-    log_audit("file_deleted", {"file_path": file_path, "document_id": doc_id})
-    logger.info("ingestion.file_deleted", path=file_path, doc_id=doc_id)
+    log_audit("file_deleted", {"file_path": file_path, "document_ids": doc_ids})
+    logger.info("ingestion.file_deleted", path=file_path, doc_ids=doc_ids)
 
 
 # ---------------------------------------------------------------------------

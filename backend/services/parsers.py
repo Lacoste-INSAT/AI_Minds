@@ -18,10 +18,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import structlog
-
-logger = structlog.get_logger(__name__)
-
 
 def parse_file(file_path: str) -> str:
     """

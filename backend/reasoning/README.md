@@ -5,7 +5,7 @@
 ## Quick Start
 
 ```python
-from reasoning.reasoning import process_query, ModelTier
+from backend.reasoning.cpumodel import process_query, ModelTier
 
 # Simple question
 result = await process_query("What is the project deadline?")
@@ -25,9 +25,9 @@ result = await process_query(
 ### Add the router to your main app:
 
 ```python
-# reasoning/main.py
+# backend/main.py
 from fastapi import FastAPI
-from reasoning.reasoning.api import router as reasoning_router
+from backend.reasoning.api import router as reasoning_router
 
 app = FastAPI(title="Synapsis")
 app.include_router(reasoning_router, prefix="/query", tags=["reasoning"])
@@ -76,7 +76,7 @@ app.include_router(reasoning_router, prefix="/query", tags=["reasoning"])
 cd AI_Minds
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1  # Windows
-pip install -r reasoning/reasoning/requirements.txt
+pip install -r backend/reasoning/requirements.txt
 
 # Install Ollama and pull models
 # See: https://ollama.ai
@@ -88,7 +88,7 @@ ollama pull phi4-mini        # T1: Best quality (optional)
 ## Architecture Overview
 
 ```
-├── reasoning/reasoning/
+├── backend/reasoning/
 │   ├── api.py              # FastAPI endpoints
 │   ├── cpumodel/           # CPU implementation
 │   │   ├── engine.py       # Main orchestrator (process_query)
@@ -202,13 +202,13 @@ services:
 .\.venv\Scripts\Activate.ps1
 
 # Run all tests
-python -m pytest reasoning/reasoning/tests/ -v
+python -m pytest backend/reasoning/tests/ -v
 
 # Run specific test file
-python -m pytest reasoning/reasoning/tests/test_real_data.py -v
+python -m pytest backend/reasoning/tests/test_real_data.py -v
 
 # Run with coverage
-python -m pytest reasoning/reasoning/tests/ --cov=backend.reasoning.cpumodel
+python -m pytest backend/reasoning/tests/ --cov=backend.reasoning.cpumodel
 ```
 
 ## Test Coverage
@@ -272,7 +272,7 @@ Fix: Ensure Qdrant is running on port 6333
 ## Files Delivered
 
 ```
-reasoning/reasoning/
+backend/reasoning/
 ├── api.py                    # FastAPI router
 ├── requirements.txt          # Python dependencies
 ├── cpumodel/
