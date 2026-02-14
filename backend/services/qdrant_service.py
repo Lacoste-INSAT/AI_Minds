@@ -58,6 +58,11 @@ def upsert_vectors(
     """Upsert vectors with payloads into the collection."""
     from qdrant_client.models import PointStruct
 
+    if not (len(ids) == len(vectors) == len(payloads)):
+        raise ValueError(
+            f"Input list lengths must match: ids={len(ids)}, vectors={len(vectors)}, payloads={len(payloads)}"
+        )
+
     client = _get_client()
     points = [
         PointStruct(

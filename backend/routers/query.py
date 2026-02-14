@@ -59,7 +59,8 @@ async def stream_answer(websocket: WebSocket):
             top_k = data.get("top_k", 10)
 
             # Step 1: Embed + Retrieve (non-streaming)
-            query_vector = embed_text(question)
+            import asyncio
+            query_vector = await asyncio.to_thread(embed_text, question)
             results = await hybrid_search(
                 query=question,
                 query_vector=query_vector,
@@ -91,15 +92,13 @@ async def stream_answer(websocket: WebSocket):
 
             # Step 3: Send final packet with sources
             sources = results_to_evidence(results)
+            answer_packet = AnswerPacket(
+                answer=full_answer,
+                sources=sources,
+            )
             await websocket.send_json({
                 "type": "done",
-                "data": {
-                    "answer": full_answer,
-                    "sources": [s.model_dump() for s in sources],
-                    "confidence": "medium",
-                    "confidence_score": 0.5,
-                    "verification": "APPROVE",
-                },
+                "data": answer_packet.model_dump(),
             })
 
     except WebSocketDisconnect:

@@ -186,7 +186,7 @@ async def verify_answer(
 
     except Exception as e:
         logger.warning("critic.verification_failed", error=str(e))
-        return "APPROVE", "Verification skipped due to error."
+        return "REVISE", "Verification skipped due to error; answer requires manual review."
 
 
 # ---------------------------------------------------------------------------
@@ -283,8 +283,9 @@ async def process_query(
     query_type = await classify_query(question)
     logger.info("query.classified", type=query_type)
 
-    # Step 2: Embed query
-    query_vector = embed_text(question)
+    # Step 2: Embed query (CPU-heavy — offload to threadpool)
+    import asyncio
+    query_vector = await asyncio.to_thread(embed_text, question)
 
     # Step 3: Hybrid retrieval
     results = await hybrid_search(

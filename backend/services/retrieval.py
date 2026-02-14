@@ -197,6 +197,8 @@ def reciprocal_rank_fusion(
     """Fuse multiple result lists using Reciprocal Rank Fusion (RRF)."""
     if weights is None:
         weights = [settings.dense_weight, settings.sparse_weight, settings.graph_weight]
+    else:
+        weights = list(weights)  # Defensive copy to avoid mutating caller's list
 
     # Ensure weights covers all lists
     while len(weights) < len(result_lists):
@@ -247,14 +249,16 @@ async def hybrid_search(
     """
     Run dense + sparse + graph retrieval and fuse results.
     """
-    # Dense search
-    dense_results = dense_search(query_vector, top_k=top_k)
+    import asyncio
 
-    # Sparse search
-    sparse_results = sparse_search(query, top_k=top_k)
+    # Dense search (blocking I/O — offload to threadpool)
+    dense_results = await asyncio.to_thread(dense_search, query_vector, top_k)
 
-    # Graph search
-    graph_results = graph_search(query, top_k=top_k) if include_graph else []
+    # Sparse search (CPU-heavy BM25 — offload to threadpool)
+    sparse_results = await asyncio.to_thread(sparse_search, query, top_k)
+
+    # Graph search (SQLite I/O — offload to threadpool)
+    graph_results = await asyncio.to_thread(graph_search, query, top_k) if include_graph else []
 
     # Fuse
     fused = reciprocal_rank_fusion(dense_results, sparse_results, graph_results)

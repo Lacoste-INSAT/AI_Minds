@@ -88,7 +88,7 @@ async def update_sources(config: SourcesConfigUpdate):
             )
 
     # Update settings
-    if config.exclude_patterns:
+    if config.exclude_patterns is not None:
         settings.exclude_patterns = config.exclude_patterns
     if config.max_file_size_mb is not None:
         settings.max_file_size_mb = config.max_file_size_mb
@@ -135,9 +135,21 @@ def _save_config_to_disk(config: SourcesConfigUpdate):
     data = {
         "watched_directories": config.watched_directories,
         "exclude_patterns": config.exclude_patterns,
-        "max_file_size_mb": config.max_file_size_mb or settings.max_file_size_mb,
-        "scan_interval_seconds": config.scan_interval_seconds or settings.scan_interval_seconds,
-        "rate_limit_files_per_minute": config.rate_limit_files_per_minute or settings.rate_limit_files_per_minute,
+        "max_file_size_mb": (
+            config.max_file_size_mb
+            if config.max_file_size_mb is not None
+            else settings.max_file_size_mb
+        ),
+        "scan_interval_seconds": (
+            config.scan_interval_seconds
+            if config.scan_interval_seconds is not None
+            else settings.scan_interval_seconds
+        ),
+        "rate_limit_files_per_minute": (
+            config.rate_limit_files_per_minute
+            if config.rate_limit_files_per_minute is not None
+            else settings.rate_limit_files_per_minute
+        ),
     }
 
     config_path.write_text(json.dumps(data, indent=2))

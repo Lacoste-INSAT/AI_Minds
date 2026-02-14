@@ -224,12 +224,12 @@ async def get_memory_detail(memory_id: str):
 def _get_document_entities(document_id: str) -> list[str]:
     """Get entity names associated with a document's chunks."""
     with get_db() as conn:
-        # Single query: join chunks → nodes via source_chunks LIKE match
+        # Single query: join chunks → nodes via delimiter-aware source_chunks match
         rows = conn.execute(
             """SELECT DISTINCT n.name
                FROM nodes n
                JOIN chunks c ON c.document_id = ?
-               WHERE n.source_chunks LIKE '%' || c.id || '%'""",
+               WHERE (',' || n.source_chunks || ',') LIKE '%,' || c.id || ',%'""",
             (document_id,),
         ).fetchall()
     return [r["name"] for r in rows]

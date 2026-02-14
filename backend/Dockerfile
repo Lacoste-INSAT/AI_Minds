@@ -13,7 +13,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Python deps
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN python -m spacy download en_core_web_sm
+# spacy is commented out in requirements.txt; skip download until enabled
+# RUN python -m spacy download en_core_web_sm
 
 # App code
 COPY . .
