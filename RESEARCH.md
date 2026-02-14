@@ -1,328 +1,250 @@
-# MemoryGraph — Open Research Questions
+# MemoryGraph — Research & Open Decisions (FINAL)
 
-> **Status**: ACTIVELY RESEARCHING — Resolve these before writing code  
-> **Last Updated**: 2026-02-14
-
----
-
-## PANEL DISCUSSION INSIGHTS (Filtered)
-
-From the AI MINDS panel discussion. These are NOT from judges — take with a grain of salt. But useful signal.
-
-### What validated our approach:
-- **Graph representation > flat vectors**: Dr. Racha's point about geometric deep learning — "if you represent structured data as a flat vector, a lot of structure is lost." This is literally the argument for our knowledge graph over pure vector search. Use this framing in our pitch.
-- **Agentic AI is the trend**: Ilyes said "anything after GPT-3.5 has been beaten by agentic" — orchestrating multiple specialized agents beats one big model call. Our multi-agent pipeline (planner → retriever → reasoner → critic) IS the agentic approach.
-- **Local/on-premise is a selling point**: Ilyes talked about Saudi/Qatari government contracts where data must stay on-premise, behind locked doors, no internet. Frame our local-first constraint as a feature.
-- **SLMs + good architecture > big models**: "Ford computed SLMs to make a task that took 2s to microseconds." The value is in our effort/architecture, not model size. With smaller models, "your value comes from your effort, otherwise nothing works."
-- **Trust and risk matter**: Multiple panelists emphasized trustworthiness, uncertainty handling, not being overconfident. Our critic agent + confidence scores + source citation directly address this.
-
-### What we should NOT do (based on panel):
-- Don't claim our system is trustworthy for medical/legal decisions — that's a regulated domain trap
-- Don't over-promise on generative AI capabilities — the medical panelist was skeptical of generated data
-- Don't ignore energy/efficiency — small models are also a sustainability argument
-
-### What's noise (interesting but not actionable for us):
-- Quantum computing in drug discovery — irrelevant to our project
-- Neuromorphic neural networks — too futuristic
-- Specific healthcare compliance regulations — we're not building a medical tool
-- "Organic AI, physics-inspired neural networks" — research frontier, not hackathon material
+> **Status**: Resolve these BEFORE writing code  
+> **Date**: 2026-02-14
 
 ---
 
-## CRITICAL DECISIONS (Must resolve before implementation)
+## Panel Insights (Filtered — NOT from judges)
 
-### RQ-1: Which LLM?
+### Validated our approach:
+- **Graph > flat vectors**: Geometric DL literature confirms structured data → graph outperforms flat vectors. Use in pitch.
+- **Agentic architecture is the trend**: Orchestrated specialized agents beat single model calls.
+- **Local/on-premise is a selling point**: Real contracts require data sovereignty. Frame as feature.
+- **SLMs + architecture > big models**: Value is in effort/orchestration, not parameter count.
+- **Trust matters**: Confidence scores, source citation, uncertainty handling are expected.
 
-**Candidates** (all < 4B params, all open-source):
+### What NOT to do:
+- Don't claim system is trustworthy for medical/legal decisions
+- Don't over-promise on generative AI capabilities
+- Don't pick a regulated domain (medical, legal, finance) — adds overhead, scores zero extra points
 
-| Model | Params | Strengths | Weaknesses | License |
-|---|---|---|---|---|
-| Phi-3-mini-4k-instruct | 3.8B | Best reasoning at size, structured output | Slightly over 3B, check if 3.8B is < 4B ✅ | MIT |
-| Qwen2.5-3B-Instruct | 3B | Good instruction following, multilingual | Slightly weaker reasoning than Phi-3 | Apache 2.0 |
-| Llama-3.2-3B-Instruct | 3.2B | Strong instruction following, Meta-backed | Newer, less community testing | Llama 3.2 Community |
-| Gemma-2-2B-it | 2.6B | Small, fast, good for constrained hardware | Weaker on complex reasoning | Gemma Terms |
-| StableLM-2-1.6B | 1.6B | Very fast, tiny | Significantly weaker reasoning | StabilityAI |
-
-**What we need to test**:
-- [ ] JSON extraction reliability (can it output structured entity/relationship JSON consistently?)
-- [ ] Speed on target demo hardware (CPU? GPU? What GPU?)
-- [ ] Quality of entity extraction from document chunks
-- [ ] Quality of question answering with provided context
-- [ ] Quality of critic/verification judgments
-
-**Testing protocol**:
-1. Prepare 10 test documents (mix of modalities)
-2. Run each model on same entity extraction prompts
-3. Run each model on same QA prompts with same context
-4. Measure: accuracy, consistency, latency, JSON parse success rate
-5. Pick winner based on weighted score
-
-**DEADLINE**: Must decide before implementation starts.
+### Filtered out (noise):
+- Quantum computing, neuromorphic/organic AI, carbon footprint regulations — irrelevant to our build
 
 ---
 
-### RQ-2: Graph Construction — How to Extract Entities & Relationships?
+## RQ-1: Which LLM? (CRITICAL — Resolve first)
 
-**The problem**: We need the LLM to read text chunks and output structured graph data. With a < 4B model, this is unreliable.
+**Primary candidate**: Phi-3.5-mini-instruct (3.8B, MIT license)  
+**Fallback candidate**: Qwen2.5-3B-Instruct (3B, Apache 2.0)  
+**DO NOT USE**: qwen2.5:0.5b — too weak for entity extraction, QA, or verification. Will produce garbage.
 
-**Options**:
+| Model | Params | Why Consider | Risk |
+|---|---|---|---|
+| Phi-3.5-mini-instruct | 3.8B | Best reasoning at size, good structured output | Slower on CPU |
+| Qwen2.5-3B-Instruct | 3B | Faster, multilingual, solid instruction following | Weaker reasoning |
+| Llama-3.2-3B-Instruct | 3.2B | Strong instruction following | Newer, less testing |
 
-**Option A: LLM-only extraction**
-```
-Input: text chunk
-Prompt: "Extract entities and relationships as JSON"
-Output: {"entities": [...], "relationships": [...]}
-```
-- Pro: Flexible, understands context
-- Con: Small models produce malformed JSON ~20-40% of the time
-- Mitigation: Retry with format correction, regex fallback
+**Benchmark protocol** (2-3 hours):
+1. Pull all 3 via Ollama
+2. Run 10 identical entity extraction prompts → measure JSON parse success rate
+3. Run 10 identical QA prompts with same context → measure answer quality
+4. Run 5 critic prompts → measure APPROVE/REVISE/REJECT accuracy
+5. Measure latency on demo hardware (CPU and GPU if available)
+6. Score: 40% quality + 30% JSON reliability + 30% speed → PICK ONE
 
-**Option B: Hybrid (spaCy NER + LLM relationships)**
-```
-Step 1: spaCy extracts named entities (fast, reliable)
-Step 2: LLM determines relationships between extracted entities
-```
-- Pro: Entity extraction is reliable (rule-based), LLM only does relationship classification
-- Con: spaCy's small model misses domain-specific entities
-- Mitigation: Custom entity patterns for common types
-
-**Option C: Pattern-based + LLM enrichment**
-```
-Step 1: Regex/pattern extraction (emails, dates, URLs, money)
-Step 2: spaCy for named entities
-Step 3: LLM for concept extraction and relationship inference (only the hard part)
-```
-- Pro: Most reliable, least LLM dependency
-- Con: More code to write, may miss subtle entities
-
-**Leaning toward**: Option C. Use deterministic methods for what we can, LLM only for what requires understanding.
-
-**NEEDS**: Prototype each approach with 5 test documents, measure extraction quality.
+**Expected outcome**: Phi-3.5-mini wins on quality, Qwen2.5-3B wins on speed. If demo hardware has GPU → Phi-3.5. If CPU-only → may need Qwen2.5-3B.
 
 ---
 
-### RQ-3: Multi-Hop Reasoning — How?
+## RQ-2: Demo Hardware (CRITICAL — Determines model choice)
 
-**The problem**: "Show me all ideas from Sarah that relate to the marketing strategy" requires traversing the graph across multiple nodes.
+**From panel**: "I encourage you to know the difference between CPU and GPU models... you will realize how stupid the model is [on CPU]."
 
-**Options**:
+**Action items**:
+1. Identify the exact laptop we demo on — whose machine?
+2. Does it have a GPU? What GPU? VRAM?
+3. Test inference speed: `time ollama run phi3.5 "Extract entities from: John met Sarah to discuss the Q3 budget."`
+4. If CPU-only: MUST use quantized GGUF (Q4_K_M), expect 5-10s per response
+5. If GPU (even modest): Full quantization, expect 2-3s per response
+6. Pre-compute everything possible (embeddings, graph, enrichment) — only live LLM call during demo is the QA response
 
-**Option A: SQL recursive CTEs**
-```sql
-WITH RECURSIVE related AS (
-    SELECT * FROM edges WHERE source_id = (SELECT id FROM nodes WHERE name = 'Sarah')
-    UNION ALL
-    SELECT e.* FROM edges e JOIN related r ON e.source_id = r.target_id
-    WHERE depth < 3
-)
-SELECT * FROM related WHERE target_id IN (
-    SELECT id FROM nodes WHERE name LIKE '%marketing%'
-);
-```
-- Pro: Fast, no extra dependencies
-- Con: Limited to fixed patterns, hard to make flexible
+**DEADLINE**: Resolve within 24 hours. This blocks RQ-1.
 
-**Option B: NetworkX subgraph**
+---
+
+## RQ-3: Entity Extraction — Three-Layer Approach
+
+**Decision**: Option C from previous research — deterministic first, LLM last.
+
+**Layer 1: Regex** (instant, 100% precise)
+- Emails: `[\w.+-]+@[\w-]+\.[\w.-]+`
+- URLs: `https?://[^\s<>"]+`
+- Dates: `\d{4}[-/]\d{2}[-/]\d{2}`
+- Money: `\$\d+(?:,\d{3})*(?:\.\d{2})?`
+
+**Layer 2: spaCy** (fast, ~85% on common entities)
+- PERSON, ORG, GPE, DATE, EVENT
+- Model: `en_core_web_sm` (12MB, fast)
+- Custom patterns for project names if needed
+
+**Layer 3: LLM** (slow, for the hard stuff only)
+- Concept extraction ("the discussion was about scaling strategy")
+- Relationship inference ("Sarah decided on Option A for the logo")
+- Output schema: `{"concepts": [...], "relationships": [{"from": "...", "to": "...", "type": "..."}]}`
+
+**Validation needed**: Run all 3 layers on 5 test documents. Measure entity count and accuracy per layer. Confirm Layer 3 adds meaningful value over Layers 1+2 alone.
+
+---
+
+## RQ-4: Multi-Hop Reasoning
+
+**Decision**: NetworkX subgraph + LLM synthesis.
+
 ```python
-import networkx as nx
-G = load_graph_from_sqlite()
-paths = nx.all_simple_paths(G, source="sarah_node", target="marketing_node", cutoff=3)
-```
-- Pro: Flexible, many algorithms available (shortest path, centrality, communities)
-- Con: Must load graph into memory (fine for demo scale < 10K nodes)
+# Load graph from SQLite into NetworkX
+G = load_subgraph(entity_names=["Sarah", "marketing"])
 
-**Option C: LLM-driven exploration**
-```
-Step 1: LLM decides which graph queries to run
-Step 2: Execute queries, return results to LLM
-Step 3: LLM decides if more traversal needed
-Step 4: LLM synthesizes final answer
-```
-- Pro: Most intelligent, handles ambiguous queries
-- Con: Slow (multiple LLM calls), unreliable with small models
+# Find all paths between entities (depth ≤ 3)
+paths = nx.all_simple_paths(G, source="sarah_id", target="marketing_id", cutoff=3)
 
-**Leaning toward**: Option B (NetworkX) for graph traversal, with LLM for final synthesis. Load relevant subgraph into NetworkX, find paths, retrieve chunk text for path nodes, feed to LLM for answer generation.
+# Get chunks referenced by path nodes
+chunks = get_chunks_for_path_nodes(paths)
 
-**NEEDS**: Prototype with a test graph of ~50 nodes, measure quality and latency.
+# Feed to LLM for synthesis
+answer = llm.synthesize(question, chunks)
+```
+
+**Why this works**: Demo scale will be <1K nodes. NetworkX loads the entire graph in milliseconds. For production scale, we'd need something else, but for a hackathon demo, this is fast and flexible.
+
+**Validation needed**: Build a test graph with ~50 nodes, 100 edges. Run 5 multi-hop queries. Measure path quality and latency.
 
 ---
 
-### RQ-4: Knowledge Graph Visualization — Which Library?
+## RQ-5: Graph Visualization
 
-**Options**:
+**Decision**: react-force-graph for primary, vis.js as fallback.
 
-| Library | Pros | Cons |
+**Why react-force-graph**:
+- 2D/3D modes (3D is visually distinctive in demo — judges notice it)
+- React-native, works with Next.js
+- Interactive: click node → show connected memories, highlight paths
+
+**Constraints**:
+- Limit to ≤ 50 visible nodes in demo (more = visual noise)
+- Color-code by entity type (person=blue, project=green, concept=orange)
+- Edge labels for relationship types
+- Click node → sidebar with full detail
+
+**Validation needed**: Quick prototype with 50 nodes on demo hardware. If janky → switch to vis.js.
+
+---
+
+## RQ-6: Proactive Insights — Triggering
+
+**Decision**: Both post-ingestion hooks AND scheduled tasks.
+
+| Feature | Trigger | Implementation |
 |---|---|---|
-| react-force-graph | 3D/2D, React-native, interactive | Can be janky with many nodes |
-| vis.js (via react-vis-network) | Mature, hierarchical layouts, clustering | Older, less React-friendly |
-| D3.js (custom) | Full control, beautiful | Lots of custom code |
-| Cytoscape.js | Academic-grade, great layouts | Steeper learning curve |
-| Sigma.js | WebGL, handles large graphs | Less interactive features |
-
-**Leaning toward**: `react-force-graph` for the "wow factor" in demo (3D graph is visually distinctive). Fallback: vis.js if performance is bad.
-
-**NEEDS**: Build a quick prototype with ~50 nodes and test on demo hardware.
+| Connection discovery | Post-ingestion | Compare new entities to existing graph, O(N) entity overlap |
+| Contradiction detection | Post-ingestion | Compare new beliefs to existing beliefs for same entity |
+| Weekly digest | Scheduled (every 6h or on-demand) | SQL aggregation of mention counts + LLM narrative |
+| Pattern alerts | Scheduled | NetworkX centrality analysis |
 
 ---
 
-## IMPORTANT QUESTIONS (Should resolve early)
+## RQ-7: Demo Dataset
 
-### RQ-5: What Demo Hardware Are We Using?
+**Decision**: 50 items, personal knowledge theme (NOT medical).
 
-**This determines everything about performance**:
-- GPU laptop → Phi-3 is fine, 2-3 second responses
-- CPU-only laptop → Need quantized model (Q4_K_M), 5-10 second responses
-- Whose laptop? Dev machine or presentation machine?
+**Scenario**: A person managing a startup project, tracking meetings, ideas, and decisions.
 
-**From panel**: Ilyes explicitly said "I encourage you to know the difference between CPU and GPU models... you will realize how stupid the model is [on CPU]." This is NOT hypothetical — if we demo on CPU-only hardware with an unquantized model, the system will be painfully slow or produce garbage.
+| Type | Count | Content |
+|---|---|---|
+| Markdown notes | 15 | Meeting notes with different people, brainstorm ideas, journal entries |
+| PDFs | 10 | Research reports, competitor analysis, budget documents |
+| Images | 10 | Whiteboard photos, screenshots of designs, handwritten notes |
+| Audio | 5 | Voice memos with ideas, meeting recordings (short clips) |
+| JSON | 5 | Structured notes with tags and action items |
+| **Total** | **45** | |
 
-**ACTION**: 
-1. Identify the exact laptop we'll demo on
-2. Test inference speed on that machine
-3. If CPU-only: MUST use quantized GGUF (Q4_K_M or Q5_K_M), expect 5-10s latency
-4. If GPU (even a modest one): Can use larger quantization, expect 2-3s latency
-5. Pre-compute everything possible (embeddings, graph) so only the LLM call is live
+**Story threads** (for multi-hop queries):
+- "Sarah" appears in 5+ documents → meeting notes, email summaries, decisions
+- "Marketing strategy" evolves over time → contradicting opinions
+- "Budget" connects to multiple projects and people
+- "Product launch" has timeline of decisions
 
----
+**Pre-built queries for demo**:
+1. "What are my top priorities this month?" → tests aggregation
+2. "What did Sarah say about the marketing budget?" → tests multi-hop
+3. "How has my thinking about the product positioning changed?" → tests temporal
+4. "Did I decide on a logo?" → tests contradiction detection
+5. "Summarize everything related to the product launch" → tests broad retrieval
 
-### RQ-6: Proactive Insights — When and How?
-
-**When do they generate?**
-- After every ingestion? (could be slow)
-- On a schedule? (every 6 hours?)
-- On app startup? (generate a "since last login" digest?)
-
-**How are they stored/shown?**
-- Push notifications in the UI?
-- "Insights" tab that accumulates?
-- Banner at top of chat?
-
-**NEEDS**: UX decision. Probably: post-ingestion for connection discovery (fast), scheduled for digests (batched).
+**ASSIGN**: Someone builds this dataset. 2-3 hours. Must be done before integration testing.
 
 ---
 
-### RQ-7: How Big Is Our Demo Dataset?
+## RQ-8: Frontend Views
 
-**The demo needs to look realistic but be controllable.**
+**Decision**: 4 views for MVP.
 
-Proposal: 50-100 items across modalities:
-- 20 text/markdown notes (meeting notes, ideas, journal entries)
-- 10 PDFs (research papers, invoices, letters)  
-- 10 images with text (whiteboard photos, screenshots)
-- 5 audio memos (recorded with phone)
-- 5 JSON structured notes
+| View | Purpose | Priority |
+|---|---|---|
+| **Chat** | Ask questions, see answers with citations + confidence badges | P0 |
+| **Graph Explorer** | Interactive knowledge graph, click to explore | P0 |
+| **Timeline** | Chronological feed of memories, filter by category/date | P0 |
+| **Digest** | Proactive insights, connection alerts, contradictions | P1 |
 
-**All content should tell a coherent story** — e.g., a person managing a startup:
-- Project planning notes
-- Meeting summaries with different people
-- Research on competitors
-- Budget documents
-- Voice memos with ideas
-- Whiteboard photos from brainstorming
-
-This makes multi-hop queries natural: "What did Sarah say about the marketing budget in our last 3 meetings?"
-
-**NEEDS**: Someone to create this dataset. It's 2-3 hours of work but critical for demo.
+**Shared components**:
+- Source citation panel (opens when you click [Source 1])
+- Confidence badge (high/medium/low/none with colors)
+- Entity chips (clickable, navigate to graph)
 
 ---
 
-### RQ-8: Frontend Architecture — How Many Views?
-
-**Minimum for demo (3 views)**:
-1. **Chat View**: Ask questions, see answers with citations and confidence
-2. **Graph Explorer**: Interactive knowledge graph visualization
-3. **Timeline**: Temporal view of how concepts/beliefs evolved
-
-**Nice to have (2 more)**:
-4. **Memory Browser**: Scroll through all stored chunks, filter by category/date
-5. **Digest View**: Proactive insights and alerts
-
-**NEEDS**: UX wireframes before building. Even rough sketches on paper.
-
----
-
-## LOWER PRIORITY (Can decide during implementation)
-
-### RQ-9: Audio Transcription Model
-
-- `faster-whisper` tiny model (39M params) — fast, good enough
-- `faster-whisper` base model (74M params) — better accuracy
-- Decision: Start with tiny, upgrade if quality is bad
-
-### RQ-10: Embedding Model
-
-- `all-MiniLM-L6-v2` (384-dim, 80MB) — current choice, well-tested
-- `all-MiniLM-L12-v2` (384-dim, 120MB) — slightly better quality
-- `bge-small-en-v1.5` (384-dim, 130MB) — newer, may be better
-- Decision: Stick with L6-v2 unless retrieval quality is measurably bad
-
-### RQ-11: Chunk Size
-
-- Current: 500 chars with 100 overlap
-- For knowledge graph: maybe smaller chunks (300 chars) to get more precise entity extraction?
-- For QA: larger chunks (600-800 chars) give more context to the LLM?
-- Decision: May need different chunk sizes for different purposes
-
----
-
-## RESOLVED DECISIONS
+## Resolved Decisions (No Longer Open)
 
 | Question | Decision | Rationale |
 |---|---|---|
-| Graph DB | SQLite + JSON columns | Zero-config, no JVM, sufficient for demo |
-| Vector DB | Qdrant | Already tested, good persistence |
-| Backend framework | FastAPI | Async, SSE support, good ecosystem |
-| Frontend framework | Next.js | React-based, easy to build UI |
+| Domain | Personal knowledge (NOT medical) | No scoring bonus for medical, adds regulatory risk |
+| Graph DB | SQLite + JSON columns | Zero-config, ships with Python, sufficient for demo |
+| Vector DB | Qdrant (on-disk) | Tested, persistent, production-quality |
+| Backend | FastAPI | Async, WebSocket, good ecosystem |
+| Frontend | Next.js + shadcn/ui | Clean, React-based, good for visualization |
+| Deployment | Docker Compose | One-command startup, reproducible |
 | File watching | watchdog | Cross-platform, reliable |
 | OCR | pytesseract | Mature, handles whiteboard photos |
-| PDF extraction | PyMuPDF | Faster and better than PyPDF2 |
+| PDF | PyMuPDF (fitz) | Fastest Python PDF extractor |
+| Audio | faster-whisper (tiny) | 39M params, fast on CPU |
+| Embeddings | all-MiniLM-L6-v2 | 80MB, 384-dim, well-tested |
+| Sparse search | rank-bm25 | Simple, complements dense search |
+| NER | spaCy en_core_web_sm | Fast, reliable for common entities |
+| Graph analysis | NetworkX | In-memory, rich algorithms |
+| Graph viz | react-force-graph | 2D/3D, React-native, wow factor |
+| Scheduler | APScheduler | In-process background tasks |
+| Logging | structlog | Structured JSON, good for debugging |
+| Email/IMAP | NOT building | Auth complexity too high for 24h |
+| 0.5B fallback | NOT using | Too weak to be useful |
 
 ---
 
-## NEXT STEPS (Ordered)
+## What Every Team Member Must Understand
 
-1. **RQ-1**: Benchmark LLM candidates (2-3 hours)
-   - Set up Ollama with each model
-   - Run test prompts for entity extraction + QA
-   - Measure speed and quality
-   - PICK ONE
-
-2. **RQ-2**: Prototype entity extraction (2-3 hours)
-   - Try Option C (pattern + spaCy + LLM)
-   - Test on 5 sample documents
-   - Measure extraction quality
-
-3. **RQ-5**: Identify demo hardware (30 minutes)
-   - Test inference speed on target laptop
-   - Determine if GPU available
-
-4. **RQ-7**: Start building demo dataset (2-3 hours)
-   - Create the 50-100 item dataset
-   - Ensures we have realistic test data
-
-5. **RQ-8**: Sketch frontend wireframes (1 hour)
-   - Paper sketches of 3 core views
-   - Agree on layout before coding
-
-6. **RQ-3**: Prototype multi-hop reasoning (2-3 hours)
-   - Build test graph in NetworkX
-   - Test path-finding queries
-   - Measure quality
-
-**AFTER all 6 are done → Start implementation (Phase 1 from ARCHITECTURE.md)**
-
----
-
-## THINGS TO DEEPLY UNDERSTAND (Don't Just Plug In)
-
-Panel emphasized: "people deploy pipelines without understanding how things work fundamentally." Before writing code, each team member should be able to explain:
+Before writing code, each person should be able to explain to a judge:
 
 - [ ] How cosine similarity works and why we normalize embeddings
-- [ ] What sentence-transformers actually does (not just `model.encode()`)
-- [ ] How Qdrant indexes vectors (HNSW) and why top-K can miss relevant results
-- [ ] What quantization does to model quality (Q4 vs Q5 vs Q8 vs FP16)
-- [ ] How Ollama serves models and what the /api/chat endpoint actually does
-- [ ] Why graph traversal finds things vector search can't (concrete example)
+- [ ] What sentence-transformers does (not just `model.encode()`)
+- [ ] How Qdrant indexes vectors (HNSW) and why top-K sometimes misses
+- [ ] What quantization does to model quality (Q4 vs Q8 vs FP16)
+- [ ] How Ollama serves models and the `/api/chat` API contract
+- [ ] Why graph traversal finds things vector search can't (give concrete example)
 - [ ] What "grounded" means — why hallucination happens and how our critic catches it
+- [ ] What BM25 is and why we need it alongside vector search
+- [ ] Why agentic orchestration beats single model calls
 
 **If a judge asks "why does your system do X?" and the answer is "because the tutorial said so" — that's a fail.**
+
+---
+
+## Next Steps (Ordered)
+
+1. **RQ-2**: Identify demo hardware (30 min) — THIS BLOCKS EVERYTHING
+2. **RQ-1**: Benchmark LLM candidates on that hardware (2-3 hours)
+3. **RQ-3**: Validate entity extraction layers on 5 test docs (2 hours)
+4. **RQ-7**: Build demo dataset (2-3 hours) — assign to someone NOW
+5. **RQ-5**: Prototype graph viz with 50 nodes (1 hour)
+6. **RQ-4**: Test multi-hop queries on test graph (1-2 hours)
+
+**After all 6 → Start Phase 1 build (see ARCHITECTURE.md Section 11)**

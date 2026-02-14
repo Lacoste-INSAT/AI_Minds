@@ -1,57 +1,58 @@
-# MemoryGraph — A Continuously Learning Personal Knowledge Assistant
+# MemoryGraph — Personal Knowledge Assistant
 
-> **Status**: Research & Design Phase  
-> **Team**: AI MINDS  
-> **Constraint**: Local open-source LLM < 4B params, no proprietary APIs
+> **Status**: FINAL DESIGN — Ready to implement  
+> **Team**: AI MINDS (5 people, 24h build)  
+> **Constraint**: Local open-source LLM < 4B params, no proprietary APIs  
+> **Domain**: Personal knowledge management (NOT medical, NOT clinical)
 
 ---
 
-## One-Liner
+## What This Is
 
-A system that builds an evolving knowledge graph from your life — automatically connecting ideas, tracking how your thinking changes over time, and proactively surfacing insights you didn't know to ask for.
+A system that builds an evolving knowledge graph from your personal data — notes, PDFs, images, audio memos — automatically connecting ideas, tracking how your thinking changes, and surfacing insights you didn't ask for.
 
-## What This Is NOT
+**Not a chatbot. Not a search engine. A cognitive assistant.**
 
-- ❌ A chatbot with vector search
-- ❌ A RAG pipeline with a pretty UI
-- ❌ "Better Ctrl+F over your files"
+## Quick Facts
 
-## What This IS
+| | |
+|---|---|
+| **LLM** | Phi-3.5-mini-instruct (3.8B) via Ollama, Qwen2.5-3B fallback |
+| **Embeddings** | all-MiniLM-L6-v2 (384-dim, local) |
+| **Vector DB** | Qdrant (on-disk persistence) |
+| **Graph Store** | SQLite + JSON columns |
+| **Backend** | FastAPI (Python) |
+| **Frontend** | Next.js + shadcn/ui |
+| **Deployment** | Docker Compose |
+| **Modalities** | Text, PDF, Images (OCR), Audio, Markdown |
 
-- ✅ A **cognitive assistant** that builds understanding over time
-- ✅ A **knowledge graph** where entities, relationships, and beliefs evolve
-- ✅ A **proactive system** that surfaces connections before you ask
-- ✅ A **reasoning engine** that shows its work and admits uncertainty
+## Docs
 
-## Architecture Overview
-
-See [ARCHITECTURE.md](ARCHITECTURE.md) for full system design.
-
-See [RESEARCH.md](RESEARCH.md) for open questions and decisions to make.
+| Document | Purpose |
+|---|---|
+| [ARCHITECTURE.md](ARCHITECTURE.md) | System design, data contracts, build schedule |
+| [RESEARCH.md](RESEARCH.md) | Open questions to resolve before coding |
 
 ## Compliance
 
 | Rule | Status |
 |------|--------|
 | No proprietary APIs | ✅ Zero external API calls |
-| LLM < 4B parameters | ✅ TBD — Evaluating Phi-3 Mini (3.8B) vs Qwen2.5-3B vs Llama-3.2-3B |
-| Open-source model | ✅ All candidates are open-source |
-| Local embeddings | ✅ sentence-transformers (all-MiniLM-L6-v2) |
+| LLM < 4B parameters | ✅ Phi-3.5-mini = 3.8B params |
+| Open-source model | ✅ MIT license |
+| Local embeddings | ✅ sentence-transformers, no API |
 | Local vector DB | ✅ Qdrant on-disk |
+| Continuous operation | ✅ Background watcher + persistent store |
 
-## Project Status
+## Scoring Strategy
 
-- [x] Requirements analysis & scoring strategy
-- [x] Repository setup
-- [ ] Architecture design (IN PROGRESS)
-- [ ] Research: LLM selection benchmarks
-- [ ] Research: Knowledge graph schema design
-- [ ] Research: Proactive insight algorithms
-- [ ] Prototype: Core ingestion pipeline
-- [ ] Prototype: Graph construction from documents
-- [ ] Prototype: Multi-hop reasoning over graph
-- [ ] Prototype: Proactive digest generation
-- [ ] Frontend: Knowledge graph visualization
-- [ ] Frontend: Chat + timeline + graph views
-- [ ] Integration testing
-- [ ] Demo preparation
+| Category | Weight | Our Play |
+|---|---|---|
+| Innovation | 15% | Knowledge graph + proactive insights + temporal tracking |
+| Reasoning & Verification | 15% | Hybrid retrieval + graph traversal + critic agent + confidence |
+| Presentation | 15% | Stable demo, pre-tested queries, clear architecture pitch |
+| Multimodal Ingestion | 10% | 5 modalities, file watcher, automated pipeline |
+| Persistent Memory | 10% | Qdrant + SQLite graph, survives restart |
+| Usability | 10% | Chat + Graph Explorer + Timeline views |
+| Model Compliance | 5% | Documented, auditable, fully local |
+| **Target** | **80%** | **70+/80** |

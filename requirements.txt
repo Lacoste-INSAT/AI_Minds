@@ -1,43 +1,51 @@
-# MemoryGraph — Dependencies
-# 100% local, open-source ONLY
-# Status: RESEARCH PHASE — this is the planned stack, not yet installed
+# MemoryGraph — Python Dependencies
+# Pin versions after initial install: pip freeze > requirements.lock
 
-# --- Backend ---
-fastapi>=0.104.0
-uvicorn[standard]>=0.24.0
-pydantic>=2.0
-pydantic-settings>=2.0
-httpx>=0.25.0                        # Ollama HTTP client
+# === Core Framework ===
+fastapi>=0.115
+uvicorn[standard]>=0.34
+pydantic>=2.10
+pydantic-settings>=2.7
+python-dotenv>=1.0
 
-# --- Vector DB ---
-qdrant-client>=1.7.0
+# === LLM Client ===
+httpx>=0.28               # async Ollama API calls
 
-# --- Embeddings (local, 384-dim) ---
-sentence-transformers>=2.2.0         # all-MiniLM-L6-v2
+# === Vector Store ===
+qdrant-client>=1.13
 
-# --- Knowledge Graph (SQLite + in-memory analysis) ---
-networkx>=3.0                        # Graph algorithms, subgraph traversal
-# SQLite is stdlib — no dependency needed
+# === Embeddings ===
+sentence-transformers>=3.4
+numpy>=1.26
 
-# --- Document Processing ---
-pymupdf>=1.23.0                      # PDF text extraction (better than PyPDF2)
-python-docx>=1.0.0                   # DOCX extraction
-Pillow>=10.0.0                       # Image loading
-pytesseract>=0.3.10                  # OCR for images with text
+# === Sparse Search ===
+rank-bm25>=0.2.2
 
-# --- Audio Transcription ---
-faster-whisper>=0.10.0               # Whisper-tiny, 39M params, local
+# === Knowledge Graph ===
+networkx>=3.4             # in-memory graph analysis
+# SQLite is stdlib — no extra dep
 
-# --- NLP (entity extraction) ---
-spacy>=3.7.0                         # Named entity recognition
-# Download model: python -m spacy download en_core_web_sm
+# === NLP / NER ===
+spacy>=3.8
+# Post-install: python -m spacy download en_core_web_sm
 
-# --- File Watcher (auto-ingestion) ---
-watchdog>=3.0.0
+# === Document Parsing ===
+pymupdf>=1.25             # PDF extraction (import fitz)
+python-docx>=1.1          # DOCX extraction
+Pillow>=11.0              # image handling
+pytesseract>=0.3          # OCR
 
-# --- Background Tasks ---
-apscheduler>=3.10.0                  # Scheduled proactive insights
+# === Audio Transcription ===
+faster-whisper>=1.1       # tiny model, CPU-friendly
 
-# --- Utilities ---
-python-dotenv>=1.0.0
-numpy>=1.24.0
+# === File Watching ===
+watchdog>=6.0
+
+# === Scheduling ===
+apscheduler>=3.10
+
+# === Logging ===
+structlog>=24.4
+
+# === WebSocket (included with uvicorn[standard]) ===
+websockets>=14.0
