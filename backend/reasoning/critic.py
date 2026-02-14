@@ -296,7 +296,7 @@ class ReasoningPipeline:
     def __init__(
         self,
         ollama_client: OllamaClient,
-        retriever,  # HybridRetriever
+        retriever=None,  # HybridRetriever (optional - uses mock if not provided)
         max_revisions: int = 1,
     ):
         from .query_planner import QueryPlanner
@@ -310,8 +310,11 @@ class ReasoningPipeline:
         self.critic = CriticAgent(ollama_client)
         self.fusion = RRFFusion(k=60, recency_weight=0.1)
         self.max_revisions = max_revisions
+        
+        # If no retriever provided, we'll use database-based retrieval
+        self._use_db_retrieval = retriever is None
     
-    async def answer(self, question: str) -> dict:
+    async def answer(self, question: str, max_sources: int = 5) -> dict:
         """
         Full pipeline from question to verified answer.
         
@@ -338,29 +341,35 @@ class ReasoningPipeline:
         )
         
         # Step 2: Retrieve
-        bundle = await self.retriever.search(
-            query=question,
-            entities=plan.entities_mentioned,
-            dense_k=strategy["dense_k"],
-            sparse_k=strategy["sparse_k"],
-            graph_hops=strategy["graph_hops"],
-        )
-        
-        # Step 3: Fuse results
-        fused = self.fusion.fuse(
-            bundle,
-            top_k=10,
-            temporal_sort=strategy["temporal_sort"],
-        )
+        if self._use_db_retrieval:
+            # Use database-based retrieval for demo mode
+            fused = await self._retrieve_from_db(question, max_sources)
+        else:
+            bundle = await self.retriever.search(
+                query=question,
+                entities=plan.entities_mentioned,
+                dense_k=strategy["dense_k"],
+                sparse_k=strategy["sparse_k"],
+                graph_hops=strategy["graph_hops"],
+            )
+            
+            # Step 3: Fuse results
+            fused = self.fusion.fuse(
+                bundle,
+                top_k=max_sources,
+                temporal_sort=strategy["temporal_sort"],
+            )
         
         if not fused:
             return {
                 "answer": "I don't have any relevant information in your records to answer this.",
                 "sources": [],
-                "confidence": "none",
-                "verdict": "abstain",
-                "reasoning": "No relevant sources found",
-                "metadata": {"query_type": plan.query_type.value}
+                "confidence": "NONE",
+                "confidence_score": 0.0,
+                "verification": "REJECT",
+                "reasoning_chain": "No relevant sources found",
+                "query_type": plan.query_type.value,
+                "model_used": "none",
             }
         
         # Step 4: Reason
@@ -370,10 +379,12 @@ class ReasoningPipeline:
             return {
                 "answer": reasoning_result.answer,
                 "sources": [],
-                "confidence": "none",
-                "verdict": "abstain",
-                "reasoning": reasoning_result.abstention_reason or "Insufficient information",
-                "metadata": {"query_type": plan.query_type.value}
+                "confidence": "NONE",
+                "confidence_score": 0.0,
+                "verification": "REJECT",
+                "reasoning_chain": reasoning_result.abstention_reason or "Insufficient information",
+                "query_type": plan.query_type.value,
+                "model_used": getattr(reasoning_result, 'model_used', 'unknown'),
             }
         
         # Step 5: Verify with critic
@@ -410,31 +421,146 @@ class ReasoningPipeline:
             critic_result=critic_result,
         )
         
+        # Format sources for API response
+        sources_data = [
+            {
+                "id": f"src_{i+1}",
+                "title": getattr(s, 'title', None) or f"Source {i+1}",
+                "content": s.content,
+                "score": s.final_score,
+                "file_path": getattr(s, 'file_path', None),
+                "created_at": getattr(s, 'timestamp', None),
+            }
+            for i, s in enumerate(fused)
+        ]
+        
         # Step 8: Handle REJECT verdict
         if critic_result.verdict == CriticVerdict.REJECT:
             return {
                 "answer": "I found some information but couldn't verify it well enough. Here's what I found with low confidence:\n\n" + reasoning_result.answer,
-                "sources": reasoning_result.citations,
-                "confidence": "low",
-                "verdict": "rejected",
-                "reasoning": critic_result.feedback,
-                "metadata": {
-                    "query_type": plan.query_type.value,
-                    "issues": critic_result.issues_found,
-                }
+                "sources": sources_data,
+                "confidence": "LOW",
+                "confidence_score": confidence.score,
+                "verification": "REJECT",
+                "reasoning_chain": critic_result.feedback,
+                "query_type": plan.query_type.value,
+                "model_used": getattr(reasoning_result, 'model_used', 'unknown'),
             }
         
         return {
             "answer": reasoning_result.answer,
-            "sources": reasoning_result.citations,
-            "confidence": confidence.level.value,
-            "verdict": critic_result.verdict.value,
-            "reasoning": reasoning_result.reasoning_chain,
+            "sources": sources_data,
+            "confidence": confidence.level.value.upper(),
+            "confidence_score": confidence.score,
+            "verification": critic_result.verdict.value.upper(),
+            "reasoning_chain": getattr(reasoning_result, 'reasoning_chain', ''),
+            "query_type": plan.query_type.value,
+            "model_used": getattr(reasoning_result, 'model_used', 'unknown'),
+        }
+    
+    async def _retrieve_from_db(self, query: str, max_sources: int = 5):
+        """
+        Retrieve from database using FTS (demo mode).
+        Returns FusedResult-compatible objects.
+        """
+        from backend.database import memory_db
+        from dataclasses import dataclass
+        from datetime import datetime
+        
+        @dataclass
+        class MockFusedResult:
+            content: str
+            title: str
+            final_score: float
+            source_ids: list
+            file_path: str = None
+            timestamp: datetime = None
+        
+        try:
+            results = await memory_db.search_memories_fts(query, limit=max_sources)
+            
+            return [
+                MockFusedResult(
+                    content=r["content"][:2000],  # Truncate for context window
+                    title=r["title"],
+                    final_score=r.get("score", 0.5),
+                    source_ids=[r["id"]],
+                    file_path=r.get("file_path"),
+                )
+                for r in results
+            ]
+        except Exception as e:
+            logger.warning("db_retrieval_failed", error=str(e))
+            return []
+    
+    async def stream_answer(self, question: str):
+        """
+        Stream answer tokens for real-time UI updates.
+        
+        Yields dicts with:
+            {"type": "status", "message": "Planning query..."}
+            {"type": "token", "content": "The"}
+            {"type": "source", "source": {...}}
+            {"type": "done", "metadata": {...}}
+        """
+        yield {"type": "status", "message": "Planning query..."}
+        
+        # Plan
+        plan = await self.planner.plan(question)
+        yield {"type": "status", "message": f"Query type: {plan.query_type.value}"}
+        
+        # Retrieve
+        yield {"type": "status", "message": "Searching knowledge base..."}
+        if self._use_db_retrieval:
+            fused = await self._retrieve_from_db(question, max_sources=5)
+        else:
+            strategy = self.planner.get_retrieval_strategy(plan)
+            bundle = await self.retriever.search(
+                query=question,
+                entities=plan.entities_mentioned,
+                dense_k=strategy["dense_k"],
+                sparse_k=strategy["sparse_k"],
+                graph_hops=strategy["graph_hops"],
+            )
+            fused = self.fusion.fuse(bundle, top_k=5)
+        
+        if not fused:
+            yield {"type": "done", "answer": "No relevant information found.", "metadata": {}}
+            return
+        
+        # Stream sources
+        for i, source in enumerate(fused):
+            yield {
+                "type": "source",
+                "source": {
+                    "id": f"src_{i+1}",
+                    "title": getattr(source, 'title', f'Source {i+1}'),
+                    "preview": source.content[:100] + "..." if len(source.content) > 100 else source.content,
+                }
+            }
+        
+        yield {"type": "status", "message": "Generating answer..."}
+        
+        # For now, non-streaming reasoning (can be enhanced later)
+        reasoning_result = await self.reasoner.reason(question, fused)
+        
+        # Simulate token streaming
+        words = reasoning_result.answer.split()
+        for word in words:
+            yield {"type": "token", "content": word + " "}
+        
+        yield {"type": "status", "message": "Verifying answer..."}
+        
+        critic_result = await self.critic.verify(
+            question=question,
+            answer=reasoning_result.answer,
+            sources=fused,
+        )
+        
+        yield {
+            "type": "done",
             "metadata": {
+                "verification": critic_result.verdict.value.upper(),
                 "query_type": plan.query_type.value,
-                "model": reasoning_result.model_used,
-                "sources_used": len(reasoning_result.sources_used),
-                "contradictions": reasoning_result.contradictions_found,
-                "confidence_score": confidence.score,
             }
         }

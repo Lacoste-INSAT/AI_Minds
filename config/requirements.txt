@@ -25,6 +25,9 @@ rank-bm25>=0.2.2
 networkx>=3.4             # in-memory graph analysis
 # SQLite is stdlib — no extra dep
 
+# === Async SQLite ===
+aiosqlite>=0.19           # async wrapper for sqlite3
+
 # === NLP / NER ===
 spacy>=3.8
 # Post-install: python -m spacy download en_core_web_sm
