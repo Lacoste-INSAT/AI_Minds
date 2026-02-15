@@ -1,7 +1,23 @@
 "use client"
 
 import * as React from "react"
-import { ChevronRight, Clock3, FileText, Folder, Play, Plug, Rocket, Users } from "lucide-react"
+import Link from "next/link"
+import { usePathname } from "next/navigation"
+import {
+  ChevronRight,
+  Clock3,
+  FileText,
+  Folder,
+  Play,
+  Plug,
+  Rocket,
+  Users,
+  MessageSquare,
+  Network,
+  Clock,
+  Lightbulb,
+  Settings,
+} from "lucide-react"
 
 import { NavUser } from "@/components/nav-user"
 import { TeamSwitcher } from "@/components/team-switcher"
@@ -102,6 +118,7 @@ type AppSidebarProps = React.ComponentProps<typeof Sidebar> & {
 
 export function AppSidebar({ onSelectResource, ...props }: AppSidebarProps) {
   const { state: sidebarState } = useSidebar()
+  const pathname = usePathname()
   const [summary, setSummary] = React.useState<RowboatSummary>({
     agents: [],
     config: [],
@@ -177,6 +194,53 @@ export function AppSidebar({ onSelectResource, ...props }: AppSidebarProps) {
         <TeamSwitcher teams={data.teams} />
       </SidebarHeader>
       <SidebarContent>
+        {/* Synapsis Navigation */}
+        <SidebarGroup>
+          <SidebarGroupLabel>Synapsis</SidebarGroupLabel>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild className={`h-9 ${pathname === "/" ? "bg-accent" : ""}`}>
+                <Link href="/">
+                  <MessageSquare className="mr-2 h-4 w-4" />
+                  <span className="truncate">Chat</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild className={`h-9 ${pathname === "/graph" ? "bg-accent" : ""}`}>
+                <Link href="/graph">
+                  <Network className="mr-2 h-4 w-4" />
+                  <span className="truncate">Knowledge Graph</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild className={`h-9 ${pathname === "/timeline" ? "bg-accent" : ""}`}>
+                <Link href="/timeline">
+                  <Clock className="mr-2 h-4 w-4" />
+                  <span className="truncate">Timeline</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild className={`h-9 ${pathname === "/digest" ? "bg-accent" : ""}`}>
+                <Link href="/digest">
+                  <Lightbulb className="mr-2 h-4 w-4" />
+                  <span className="truncate">Insights</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild className={`h-9 ${pathname === "/setup" ? "bg-accent" : ""}`}>
+                <Link href="/setup">
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span className="truncate">Settings</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarGroup>
+
         <SidebarGroup>
           <SidebarGroupLabel>Platform</SidebarGroupLabel>
           <SidebarMenu>

@@ -22,7 +22,7 @@ import {
   Loader2Icon,
 } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
-import { createContext, memo, useContext, useEffect, useMemo, useState, Suspense, lazy } from "react";
+import { createContext, memo, useContext, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 
 // Lazy load Streamdown to prevent browser freeze during hydration
@@ -326,7 +326,7 @@ export const MessageBranchPage = ({
 };
 
 export type MessageResponseProps = {
-  children?: React.ReactNode;
+  children?: string;
   className?: string;
   mode?: "streaming" | "static";
   isAnimating?: boolean;
@@ -334,14 +334,16 @@ export type MessageResponseProps = {
 };
 
 export const MessageResponse = memo(
-  ({ className, ...props }: MessageResponseProps) => (
+  ({ children, className, ...props }: MessageResponseProps) => (
     <Streamdown
       className={cn(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className
       )}
       {...props}
-    />
+    >
+      {children ?? ""}
+    </Streamdown>
   ),
   (prevProps, nextProps) => prevProps.children === nextProps.children
 );

@@ -40,15 +40,16 @@ function PageBody() {
 
     eventSource.onmessage = (e) => {
       console.log("Received message:", e.data);
+      const data = e.data;
       try {
-        const event: RunEvent = JSON.parse(e.data);
+        const event: RunEvent = JSON.parse(data);
         setEvents((prev) => [...prev.slice(-9), `${event.type}: ${JSON.stringify(event).slice(0, 50)}...`]);
       } catch {
-        setEvents((prev) => [...prev.slice(-9), `raw: ${e.data}`]);
+        setEvents((prev) => [...prev.slice(-9), `raw: ${data}`]);
       }
     };
 
-    eventSource.onerror = (e) => {
+    eventSource.onerror = () => {
       console.log("EventSource error, readyState:", eventSource.readyState);
       if (eventSource.readyState === EventSource.CLOSED) {
         setStatus("closed");
