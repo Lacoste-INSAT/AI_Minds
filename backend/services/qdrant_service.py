@@ -99,13 +99,26 @@ def search_vectors(
             )
         qdrant_filter = Filter(must=conditions)
 
-    results = client.search(
-        collection_name=settings.qdrant_collection,
-        query_vector=query_vector,
-        limit=top_k,
-        score_threshold=score_threshold,
-        query_filter=qdrant_filter,
-    )
+    # Use query_points (qdrant-client >= 1.7) instead of deprecated search
+    try:
+        response = client.query_points(
+            collection_name=settings.qdrant_collection,
+            query=query_vector,
+            limit=top_k,
+            score_threshold=score_threshold,
+            query_filter=qdrant_filter,
+            with_payload=True,
+        )
+        results = response.points
+    except AttributeError:
+        # Fallback for older API
+        results = client.search(
+            collection_name=settings.qdrant_collection,
+            query_vector=query_vector,
+            limit=top_k,
+            score_threshold=score_threshold,
+            query_filter=qdrant_filter,
+        )
 
     return [
         {
@@ -122,10 +135,18 @@ def get_collection_info() -> dict:
     try:
         client = _get_client()
         info = client.get_collection(settings.qdrant_collection)
+        # Handle different qdrant-client versions
+        # Newer versions use info.points_count, older use vectors_count
+        points = getattr(info, 'points_count', 0) or 0
+        # vectors_count may be an integer or a dict in newer versions
+        vectors = getattr(info, 'vectors_count', 0)
+        if isinstance(vectors, dict):
+            vectors = sum(vectors.values()) if vectors else 0
+        vectors = vectors or 0
         return {
             "status": "up",
-            "vectors_count": info.vectors_count or 0,
-            "points_count": info.points_count or 0,
+            "vectors_count": vectors,
+            "points_count": points,
         }
     except Exception as e:
         logger.error("qdrant.info_failed", error=str(e))

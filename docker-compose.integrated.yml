@@ -1,0 +1,166 @@
+# Synapsis + Rowboat Integration — Docker Compose
+# ================================================
+# Air-gapped local deployment with zero cloud dependencies.
+#
+# Services:
+#   - synapsis-backend: FastAPI backend with RAG + reasoning pipeline
+#   - qdrant: Vector store for semantic search
+#   - ollama: Local LLM inference (phi4-mini, qwen2.5)
+#   - synapsis-frontend: Next.js frontend (if enabled)
+#
+# Usage:
+#   docker-compose -f docker-compose.integrated.yml up -d
+#
+# Rowboat Electron app connects to synapsis-backend via OpenAI-compatible API.
+
+version: '3.8'
+
+networks:
+  synapsis-net:
+    driver: bridge
+
+volumes:
+  qdrant-data:
+  ollama-data:
+  synapsis-data:
+
+services:
+  # =========================================================================
+  # Ollama — Local LLM Inference
+  # =========================================================================
+  ollama:
+    image: ollama/ollama:latest
+    container_name: synapsis-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-data:/root/.ollama
+    networks:
+      - synapsis-net
+    restart: unless-stopped
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Model puller — downloads required models on first run
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: synapsis-ollama-init
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - synapsis-net
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        echo "Pulling phi4-mini model..."
+        ollama pull phi4-mini || true
+        echo "Pulling qwen2.5:3b fallback model..."
+        ollama pull qwen2.5:3b || true
+        echo "Pulling qwen2.5:0.5b low-resource model..."
+        ollama pull qwen2.5:0.5b || true
+        echo "Model initialization complete!"
+    restart: "no"
+
+  # =========================================================================
+  # Qdrant — Vector Store
+  # =========================================================================
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: synapsis-qdrant
+    ports:
+      - "6333:6333"
+      - "6334:6334"
+    volumes:
+      - qdrant-data:/qdrant/storage
+    networks:
+      - synapsis-net
+    restart: unless-stopped
+    environment:
+      - QDRANT__STORAGE__STORAGE_PATH=/qdrant/storage
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:6333/readyz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =========================================================================
+  # Synapsis Backend — FastAPI + RAG + Reasoning Pipeline
+  # =========================================================================
+  synapsis-backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: synapsis-backend
+    ports:
+      - "8000:8000"
+    volumes:
+      - synapsis-data:/app/data
+      - ./data/sample_knowledge:/app/watched_data:ro  # Sample data for demo
+    networks:
+      - synapsis-net
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    environment:
+      # Synapsis config
+      - SYNAPSIS_HOST=0.0.0.0
+      - SYNAPSIS_PORT=8000
+      - SYNAPSIS_DEBUG=true
+      # Ollama (connects to ollama container)
+      - SYNAPSIS_OLLAMA_BASE_URL=http://ollama:11434
+      - SYNAPSIS_OLLAMA_MODEL_T1=phi4-mini
+      - SYNAPSIS_OLLAMA_MODEL_T2=qwen2.5:3b
+      - SYNAPSIS_OLLAMA_MODEL_T3=qwen2.5:0.5b
+      - SYNAPSIS_OLLAMA_TIMEOUT=120
+      # Qdrant (connects to qdrant container)
+      - SYNAPSIS_QDRANT_HOST=qdrant
+      - SYNAPSIS_QDRANT_PORT=6333
+      - SYNAPSIS_QDRANT_COLLECTION=synapsis_chunks
+      # Embeddings
+      - SYNAPSIS_EMBEDDING_MODEL=all-MiniLM-L6-v2
+      - SYNAPSIS_EMBEDDING_DIM=384
+      # SQLite
+      - SYNAPSIS_SQLITE_PATH=/app/data/synapsis.db
+      # CORS - allow frontend and rowboat
+      - SYNAPSIS_CORS_ORIGINS=["http://localhost:3000","http://127.0.0.1:3000","http://localhost:5173","http://127.0.0.1:5173"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # =========================================================================
+  # Synapsis Frontend — Next.js (Optional)
+  # =========================================================================
+  synapsis-frontend:
+    build:
+      context: ./frontend/synapsis
+      dockerfile: Dockerfile
+    container_name: synapsis-frontend
+    ports:
+      - "3000:3000"
+    networks:
+      - synapsis-net
+    depends_on:
+      synapsis-backend:
+        condition: service_healthy
+    environment:
+      - NEXT_PUBLIC_API_URL=http://synapsis-backend:8000
+      - NODE_ENV=production
+    restart: unless-stopped
+    profiles:
+      - frontend  # Only starts when --profile frontend is specified

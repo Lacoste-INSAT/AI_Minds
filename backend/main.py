@@ -183,6 +183,8 @@ from backend.routers.config import router as config_router
 from backend.routers.ingestion import router as ingestion_router
 from backend.routers.health import router as health_router
 from backend.routers.insights import router as insights_router
+from backend.routers.openai_compat import router as openai_router
+from backend.routers.runs import router as runs_router
 
 app.include_router(query_router)
 app.include_router(memory_router)
@@ -190,6 +192,8 @@ app.include_router(config_router)
 app.include_router(ingestion_router)
 app.include_router(health_router)
 app.include_router(insights_router)
+app.include_router(openai_router)  # OpenAI-compatible API for rowboat integration
+app.include_router(runs_router)  # Chat runs/sessions for frontend
 
 
 # ---------------------------------------------------------------------------

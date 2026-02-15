@@ -19,10 +19,26 @@ import {
   ChevronRightIcon,
   PaperclipIcon,
   XIcon,
+  Loader2Icon,
 } from "lucide-react";
 import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
-import { createContext, memo, useContext, useEffect, useMemo, useState } from "react";
-import { Streamdown } from "streamdown";
+import { createContext, memo, useContext, useEffect, useMemo, useState, Suspense, lazy } from "react";
+import dynamic from "next/dynamic";
+
+// Lazy load Streamdown to prevent browser freeze during hydration
+// Shiki and mermaid inside streamdown can block the main thread
+const Streamdown = dynamic(
+  () => import("streamdown").then((mod) => mod.Streamdown),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="flex items-center gap-2 text-muted-foreground text-sm">
+        <Loader2Icon className="h-4 w-4 animate-spin" />
+        <span>Loading...</span>
+      </div>
+    ),
+  }
+);
 
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
@@ -309,7 +325,13 @@ export const MessageBranchPage = ({
   );
 };
 
-export type MessageResponseProps = ComponentProps<typeof Streamdown>;
+export type MessageResponseProps = {
+  children?: React.ReactNode;
+  className?: string;
+  mode?: "streaming" | "static";
+  isAnimating?: boolean;
+  components?: Record<string, React.ComponentType<unknown>>;
+};
 
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
