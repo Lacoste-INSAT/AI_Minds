@@ -86,6 +86,23 @@ async def lifespan(app: FastAPI):
     # 7. Start APScheduler for proactive engine
     _start_scheduler()
 
+    # 8. Security: verify air-gap & initialise encryption
+    try:
+        from backend.security.network import NetworkGuard
+        from backend.security.encryption import get_encryptor
+
+        net_guard = NetworkGuard()
+        air_gap = net_guard.verify_air_gap()
+        if not air_gap["air_gapped"]:
+            logger.warning("startup.air_gap_issues", issues=air_gap["issues"])
+        else:
+            logger.info("startup.air_gap_verified")
+
+        enc = get_encryptor()
+        logger.info("startup.encryption", enabled=enc.enabled)
+    except Exception as e:
+        logger.warning("startup.security_init_failed", error=str(e))
+
     logger.info("app.started", host=settings.host, port=settings.port)
 
     yield  # ← App is running
@@ -164,6 +181,19 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+# Security middleware (order matters: outermost first)
+from backend.security.middleware import (
+    SecurityHeadersMiddleware,
+    RateLimitMiddleware,
+    RequestSizeLimitMiddleware,
+    ErrorSanitisationMiddleware,
+)
+
+app.add_middleware(ErrorSanitisationMiddleware)
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RateLimitMiddleware, max_requests=120, window_seconds=60)
+app.add_middleware(RequestSizeLimitMiddleware, max_body_bytes=10 * 1024 * 1024)
+
 # CORS — localhost only
 app.add_middleware(
     CORSMiddleware,
@@ -184,6 +214,7 @@ from backend.routers.ingestion import router as ingestion_router
 from backend.routers.health import router as health_router
 from backend.routers.insights import router as insights_router
 from backend.routers.runtime import router as runtime_router
+from backend.routers.security import router as security_router
 
 app.include_router(query_router)
 app.include_router(memory_router)
@@ -192,6 +223,7 @@ app.include_router(ingestion_router)
 app.include_router(health_router)
 app.include_router(insights_router)
 app.include_router(runtime_router)
+app.include_router(security_router)
 
 
 # ---------------------------------------------------------------------------

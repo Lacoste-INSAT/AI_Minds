@@ -17,6 +17,9 @@ from backend.services.embeddings import embed_text
 from backend.services.retrieval import hybrid_search, results_to_evidence
 from backend.services.model_router import ModelTask, stream_generate_for_task, ensure_lane
 from backend.services.runtime_incidents import emit_incident
+from backend.security.prompt_guard import check_prompt
+from backend.security.sanitiser import sanitise
+from backend.security.pii import redact_pii
 
 logger = structlog.get_logger(__name__)
 
@@ -29,11 +32,31 @@ async def ask_question(request: QueryRequest):
     Ask a question → full reasoning pipeline.
     Returns answer + sources + confidence + verification.
     """
+    # --- Security: sanitise & check for prompt injection ---
+    clean_question = sanitise(request.question, max_length=4096)
+    injection = check_prompt(clean_question)
+    if injection.blocked:
+        logger.warning("query.prompt_injection_blocked",
+                       score=injection.risk_score, flags=injection.flags)
+        return AnswerPacket(
+            answer="Your query was blocked by the security filter. "
+                   "Please rephrase your question.",
+            confidence="none",
+            confidence_score=0.0,
+            sources=[],
+            verification="blocked",
+            reasoning_chain=f"Prompt injection detected: {injection.reason}",
+        )
+
     result = await process_query(
-        question=request.question,
+        question=injection.sanitised_input or clean_question,
         top_k=request.top_k,
         include_graph=request.include_graph,
     )
+
+    # --- Security: redact any PII that leaked into the answer ---
+    result.answer = redact_pii(result.answer)
+
     return result
 
 
@@ -56,6 +79,20 @@ async def stream_answer(websocket: WebSocket):
             if not question:
                 await websocket.send_json({"type": "error", "data": "No question provided"})
                 continue
+
+            # --- Security: sanitise & check for prompt injection ---
+            question = sanitise(question, max_length=4096)
+            injection = check_prompt(question)
+            if injection.blocked:
+                logger.warning("query.ws_prompt_injection_blocked",
+                               score=injection.risk_score, flags=injection.flags)
+                await websocket.send_json({
+                    "type": "error",
+                    "data": "Your query was blocked by the security filter. "
+                            "Please rephrase your question.",
+                })
+                continue
+            question = injection.sanitised_input or question
 
             top_k = data.get("top_k", 10)
 
