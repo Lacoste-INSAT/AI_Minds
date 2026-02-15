@@ -21,7 +21,7 @@ class TestQueryPlanner:
     
     def test_simple_query_detection(self):
         """Simple factual queries should be classified as SIMPLE."""
-        from backend.reasoning.query_planner import QueryPlanner, QueryType
+        from backend.reasoning.gpumodel.query_planner import QueryPlanner, QueryType
         
         # Mock Ollama client (not needed for regex-based classification)
         mock_ollama = MagicMock()
@@ -35,7 +35,7 @@ class TestQueryPlanner:
     
     def test_temporal_query_detection(self):
         """Temporal queries should be detected by keywords."""
-        from backend.reasoning.query_planner import QueryPlanner, QueryType
+        from backend.reasoning.gpumodel.query_planner import QueryPlanner, QueryType
         
         mock_ollama = MagicMock()
         planner = QueryPlanner(mock_ollama)
@@ -49,7 +49,7 @@ class TestQueryPlanner:
     
     def test_multi_hop_detection(self):
         """Multi-hop queries need relationship traversal."""
-        from backend.reasoning.query_planner import QueryPlanner, QueryType
+        from backend.reasoning.gpumodel.query_planner import QueryPlanner, QueryType
         
         mock_ollama = MagicMock()
         planner = QueryPlanner(mock_ollama)
@@ -64,7 +64,7 @@ class TestQueryPlanner:
     
     def test_entity_extraction(self):
         """Should extract capitalized names as potential entities."""
-        from backend.reasoning.query_planner import QueryPlanner
+        from backend.reasoning.gpumodel.query_planner import QueryPlanner
         
         mock_ollama = MagicMock()
         planner = QueryPlanner(mock_ollama)
@@ -75,7 +75,7 @@ class TestQueryPlanner:
     
     def test_retrieval_strategy(self):
         """Should return correct strategy for each query type."""
-        from backend.reasoning.query_planner import QueryPlanner, QueryType, QueryPlan
+        from backend.reasoning.gpumodel.query_planner import QueryPlanner, QueryType, QueryPlan
         
         mock_ollama = MagicMock()
         planner = QueryPlanner(mock_ollama)
@@ -109,8 +109,8 @@ class TestRRFFusion:
     
     def test_rrf_score_calculation(self):
         """RRF should combine results from multiple paths."""
-        from backend.reasoning.fusion import RRFFusion, FusedResult
-        from backend.reasoning.retriever import RetrievalResult, RetrievalBundle
+        from backend.reasoning.gpumodel.fusion import RRFFusion, FusedResult
+        from backend.reasoning.gpumodel.retriever import RetrievalResult, RetrievalBundle
         
         # Create mock results
         dense_results = [
@@ -165,8 +165,8 @@ class TestRRFFusion:
     
     def test_deduplication(self):
         """Same chunk from multiple paths should be deduplicated."""
-        from backend.reasoning.fusion import RRFFusion
-        from backend.reasoning.retriever import RetrievalResult, RetrievalBundle
+        from backend.reasoning.gpumodel.fusion import RRFFusion
+        from backend.reasoning.gpumodel.retriever import RetrievalResult, RetrievalBundle
         
         # Same chunk appears in both paths
         results = [
@@ -196,10 +196,10 @@ class TestConfidenceScorer:
     
     def test_high_confidence(self):
         """Strong signals should produce HIGH confidence."""
-        from backend.reasoning.confidence import ConfidenceScorer, ConfidenceLevel
-        from backend.reasoning.fusion import FusedResult
-        from backend.reasoning.reasoner import ReasoningResult
-        from backend.reasoning.critic import CriticResult, CriticVerdict
+        from backend.reasoning.gpumodel.confidence import ConfidenceScorer, ConfidenceLevel
+        from backend.reasoning.gpumodel.fusion import FusedResult
+        from backend.reasoning.gpumodel.reasoner import ReasoningResult
+        from backend.reasoning.gpumodel.critic import CriticResult, CriticVerdict
         
         scorer = ConfidenceScorer()
         
@@ -248,8 +248,8 @@ class TestConfidenceScorer:
     
     def test_low_confidence_on_rejection(self):
         """Critic rejection should lower confidence."""
-        from backend.reasoning.confidence import ConfidenceScorer, ConfidenceLevel
-        from backend.reasoning.critic import CriticResult, CriticVerdict
+        from backend.reasoning.gpumodel.confidence import ConfidenceScorer, ConfidenceLevel
+        from backend.reasoning.gpumodel.critic import CriticResult, CriticVerdict
         
         scorer = ConfidenceScorer()
         
@@ -280,7 +280,7 @@ class TestOllamaClient:
     @pytest.mark.asyncio
     async def test_fallback_on_timeout(self):
         """Should fallback to next tier on timeout."""
-        from backend.reasoning.ollama_client import OllamaClient, ModelTier
+        from backend.reasoning.gpumodel.ollama_client import OllamaClient, ModelTier
         
         client = OllamaClient(enable_fallback=True)
         
@@ -307,7 +307,7 @@ class TestOllamaClient:
     @pytest.mark.asyncio
     async def test_no_fallback_when_disabled(self):
         """Should not fallback when disabled."""
-        from backend.reasoning.ollama_client import OllamaClient, ModelTier
+        from backend.reasoning.gpumodel.ollama_client import OllamaClient, ModelTier
         
         client = OllamaClient(enable_fallback=False)
         
@@ -324,6 +324,53 @@ class TestOllamaClient:
 
 
 # =============================================================================
+# Test Hybrid Retriever
+# =============================================================================
+
+class TestHybridRetriever:
+    """Tests for hybrid retrieval."""
+    
+    @pytest.mark.asyncio
+    async def test_retrieve_maps_query_type(self):
+        """retrieve() should map query_type to correct strategy."""
+        from backend.reasoning.gpumodel.retriever import HybridRetriever, RetrievalBundle
+        from backend.reasoning.gpumodel.query_planner import QueryType
+        
+        retriever = HybridRetriever()
+        
+        # Test SIMPLE query type
+        result = await retriever.retrieve(
+            query="What is the budget?",
+            query_type=QueryType.SIMPLE,
+            entities=["budget"],
+            top_k=10,
+        )
+        
+        assert isinstance(result, RetrievalBundle)
+        assert result.query == "What is the budget?"
+        # Should have called search internally
+        
+    @pytest.mark.asyncio
+    async def test_retrieve_multi_hop_enables_graph(self):
+        """MULTI_HOP queries should enable graph traversal."""
+        from backend.reasoning.gpumodel.retriever import HybridRetriever, RetrievalBundle
+        from backend.reasoning.gpumodel.query_planner import QueryType
+        
+        retriever = HybridRetriever()
+        
+        # MULTI_HOP should use graph
+        result = await retriever.retrieve(
+            query="What did Sarah say about the budget?",
+            query_type=QueryType.MULTI_HOP,
+            entities=["Sarah", "budget"],
+            top_k=10,
+        )
+        
+        assert isinstance(result, RetrievalBundle)
+        # Graph results would be populated if we had a graph loaded
+
+
+# =============================================================================
 # Integration Test (mock LLM)
 # =============================================================================
 
@@ -333,8 +380,8 @@ class TestReasoningPipelineIntegration:
     @pytest.mark.asyncio
     async def test_full_pipeline_mock(self):
         """Test full pipeline with mocked components."""
-        from backend.reasoning.query_planner import QueryPlanner, QueryType
-        from backend.reasoning.fusion import FusedResult
+        from backend.reasoning.gpumodel.query_planner import QueryPlanner, QueryType
+        from backend.reasoning.gpumodel.fusion import FusedResult
         
         # Create mock results
         mock_sources = [

@@ -140,9 +140,103 @@ async def process_query(
     return answer_packet
 
 
+class ReasoningEngine:
+    """
+    CPU-optimized reasoning engine using qwen2.5:0.5b (T3).
+    
+    This class provides the same interface as gpumodel.ReasoningEngine
+    for easy swapping between CPU and GPU modes.
+    
+    Usage:
+        engine = ReasoningEngine()
+        result = await engine.process_query("What is the deadline?")
+        print(result.answer)
+    """
+    
+    def __init__(
+        self,
+        db_path: str = "data/synapsis.db",
+        default_tier: ModelTier = ModelTier.T3,  # CPU uses T3
+    ):
+        self.db_path = db_path
+        self.default_tier = default_tier
+        # Lazy initialization of retriever
+        self._retriever = None
+    
+    def _get_retriever(self):
+        """Get or create the hybrid retriever."""
+        if self._retriever is None:
+            from .retrieval import HybridRetriever
+            self._retriever = HybridRetriever(db_path=self.db_path)
+        return self._retriever
+    
+    async def process_query(
+        self,
+        query: str,
+        tier: Optional[ModelTier] = None,
+        top_k: int = 10,
+    ) -> AnswerPacket:
+        """
+        Process a query through the full reasoning pipeline.
+        Wraps the module-level process_query for class-based usage.
+        """
+        return await process_query(query, tier=tier or self.default_tier, top_k=top_k)
+
+
+# Module-level engine instance
+_engine: Optional[ReasoningEngine] = None
+
+
+def get_engine(
+    db_path: str = "data/synapsis.db",
+    force_new: bool = False,
+) -> ReasoningEngine:
+    """
+    Get or create the CPU reasoning engine.
+    
+    Args:
+        db_path: Path to SQLite database
+        force_new: If True, create a new engine even if one exists
+        
+    Returns:
+        Configured ReasoningEngine instance
+    """
+    global _engine
+    
+    if _engine is None or force_new:
+        _engine = ReasoningEngine(db_path=db_path)
+    
+    return _engine
+
+
+async def init_engine(db_path: str = "data/synapsis.db") -> ReasoningEngine:
+    """
+    Initialize the CPU reasoning engine.
+    Pre-loads BM25 index and graph for faster first query.
+    
+    Call this during application startup:
+        engine = await init_engine()
+    """
+    engine = get_engine(db_path, force_new=True)
+    
+    # Pre-load retriever components
+    retriever = engine._get_retriever()
+    
+    # Trigger lazy loading of BM25 and graph
+    logger.info("Pre-loading BM25 index...")
+    await retriever.sparse._load_corpus()
+    
+    logger.info("Pre-loading graph...")
+    await retriever.graph._load_graph()
+    
+    logger.info("CPU Reasoning Engine initialized")
+    return engine
+
+
 async def ask(query: str) -> AnswerPacket:
     """
     Convenience function - simple interface to ask a question.
     Uses default settings optimized for CPU.
     """
     return await process_query(query, tier=ModelTier.T3, top_k=10)
+
