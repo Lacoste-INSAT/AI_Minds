@@ -78,7 +78,7 @@ async def _broadcast_ws(event: str, data: dict) -> None:
     """Push a real-time event to all connected ingestion WebSocket clients."""
     for ws in list(_ws_clients):
         try:
-            await ws.send_json({"event": event, "data": data})
+            await ws.send_json({"event": event, "payload": data})
         except Exception:
             try:
                 _ws_clients.remove(ws)
