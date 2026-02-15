@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS documents (
     modality    TEXT NOT NULL,
     source_type TEXT NOT NULL,
     source_uri  TEXT,
-    checksum    TEXT UNIQUE,
+    checksum    TEXT,
     ingested_at TEXT NOT NULL,
     status      TEXT DEFAULT 'processed',
     enrichment_status TEXT DEFAULT 'pending'

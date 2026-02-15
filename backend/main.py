@@ -55,7 +55,8 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning("startup.ollama_check_failed", error=str(e))
 
-    # 4. Load saved config and start file watcher
+    # 4. Load saved config and start file watcher + initial scan
+    _startup_dirs: list[str] = []
     try:
         from backend.routers.config import load_config_from_disk
         from backend.services.ingestion import start_file_watcher, ingestion_state
@@ -64,6 +65,7 @@ async def lifespan(app: FastAPI):
         if saved_config and saved_config.watched_directories:
             ingestion_state.watched_directories = saved_config.watched_directories
             start_file_watcher(saved_config.watched_directories)
+            _startup_dirs = list(saved_config.watched_directories)
             logger.info("startup.watcher_started", directories=len(saved_config.watched_directories))
     except Exception as e:
         logger.warning("startup.watcher_failed", error=str(e))
@@ -104,6 +106,23 @@ async def lifespan(app: FastAPI):
         logger.warning("startup.security_init_failed", error=str(e))
 
     logger.info("app.started", host=settings.host, port=settings.port)
+
+    # 9. Initial scan of watched directories (ingest existing files)
+    if _startup_dirs:
+        import asyncio as _aio
+        async def _initial_scan():
+            try:
+                from backend.services.ingestion import scan_and_ingest
+                logger.info("startup.initial_scan_starting", directories=len(_startup_dirs))
+                result = await scan_and_ingest(_startup_dirs)
+                logger.info(
+                    "startup.initial_scan_complete",
+                    files_processed=result.get("files_processed", 0),
+                    errors=result.get("errors", 0),
+                )
+            except Exception as exc:
+                logger.warning("startup.initial_scan_failed", error=str(exc))
+        _aio.ensure_future(_initial_scan())
 
     yield  # ← App is running
 

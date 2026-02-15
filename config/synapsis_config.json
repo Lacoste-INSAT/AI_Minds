@@ -1,5 +1,7 @@
 {
-  "watched_directories": [],
+  "watched_directories": [
+    "C:\\Users\\akram\\Downloads\\TradingAgents-main"
+  ],
   "exclude_patterns": [
     "node_modules/**",
     ".git/**",
