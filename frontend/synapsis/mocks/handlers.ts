@@ -103,7 +103,9 @@ function filterTimelineItems(items: TimelineItem[], filters?: TimelineFilters): 
     if (search) {
       const match =
         item.title.toLowerCase().includes(search) ||
-        item.summary.toLowerCase().includes(search) ||
+
+        (item.summary ?? "").toLowerCase().includes(search) ||
+
         item.entities.some((entity) => entity.toLowerCase().includes(search));
       if (!match) {
         return false;

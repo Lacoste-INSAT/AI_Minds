@@ -1,6 +1,6 @@
 ###############################################################################
 # Synapsis — Docker Compose
-# Qdrant vector store + Ollama LLM server + Backend API
+# Qdrant vector store + Ollama LLM server + Backend API (with file observer)
 ###############################################################################
 
 services:
@@ -52,28 +52,42 @@ services:
       start_period: 30s
 
   # ---------------------------------------------------------------------------
-  # Synapsis Backend (optional — can also run outside Docker)
+  # Synapsis Backend + File Observer
   # ---------------------------------------------------------------------------
-  # backend:
-  #   build:
-  #     context: ./backend
-  #     dockerfile: Dockerfile
-  #   container_name: synapsis-backend
-  #   restart: unless-stopped
-  #   ports:
-  #     - "8000:8000"
-  #   volumes:
-  #     - ./data:/app/data
-  #     - ./config:/app/config
-  #   environment:
-  #     - SYNAPSIS_QDRANT_HOST=qdrant
-  #     - SYNAPSIS_QDRANT_PORT=6333
-  #     - SYNAPSIS_OLLAMA_BASE_URL=http://ollama:11434
-  #   depends_on:
-  #     qdrant:
-  #       condition: service_healthy
-  #     ollama:
-  #       condition: service_healthy
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: synapsis-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./config:/app/config
+      # Mount host directories to watch inside the container.
+      # Add/change paths below to match your system.
+      # Linux/macOS:
+      #   - ~/Documents:/app/watched/Documents
+      #   - ~/Desktop:/app/watched/Desktop
+      #   - ~/Downloads:/app/watched/Downloads
+      # Windows (use full paths):
+      #   - C:/Users/YourName/Documents:/app/watched/Documents
+      #   - C:/Users/YourName/Desktop:/app/watched/Desktop
+      #   - C:/Users/YourName/Downloads:/app/watched/Downloads
+      - ./data/sample_knowledge:/app/watched/sample_knowledge
+    environment:
+      - SYNAPSIS_QDRANT_HOST=qdrant
+      - SYNAPSIS_QDRANT_PORT=6333
+      - SYNAPSIS_OLLAMA_BASE_URL=http://ollama:11434
+      - SYNAPSIS_HOST=0.0.0.0
+      # Watched directories inside the container (comma-separated)
+      - SYNAPSIS_WATCHED_DIRECTORIES=["/app/watched/sample_knowledge"]
+    depends_on:
+      qdrant:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
 
 volumes:
   qdrant_data:
