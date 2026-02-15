@@ -7,7 +7,9 @@ const steps = [
   ["typecheck", ["run", "typecheck"]],
   ["unit/integration", ["run", "test"]],
   ["contract", ["run", "test:contract"]],
+  ["a11y", ["run", "test:a11y"]],
   ["build", ["run", "build"]],
+  ["e2e", ["run", "test:e2e"]],
 ];
 
 for (const [label, npmArgs] of steps) {

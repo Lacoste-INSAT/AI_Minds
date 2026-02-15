@@ -11,13 +11,14 @@ import re
 import structlog
 
 from backend.models.schemas import AnswerPacket, ChunkEvidence
-from backend.services.ollama_client import ollama_client
 from backend.services.retrieval import (
     RetrievalResult,
     hybrid_search,
     results_to_evidence,
 )
 from backend.services.embeddings import embed_text
+from backend.services.model_router import ModelTask, generate_for_task, ensure_lane
+from backend.services.runtime_incidents import emit_incident
 
 logger = structlog.get_logger(__name__)
 
@@ -41,12 +42,18 @@ Question: {question}"""
 async def classify_query(question: str) -> str:
     """Classify the query type using the LLM."""
     try:
+        lane_ok, _ = await ensure_lane(ModelTask.classification_light, operation="query_classification")
+        if not lane_ok:
+            return "SIMPLE"
+
         prompt = QUERY_PLANNER_PROMPT.format(question=question)
-        response = await ollama_client.generate(
+        response = await generate_for_task(
+            task=ModelTask.classification_light,
             prompt=prompt,
             system="You are a query classifier. Respond with ONLY the category name.",
             temperature=0.0,
             max_tokens=20,
+            operation="query_classification",
         )
         classification = response.strip().upper()
         valid = {"SIMPLE", "MULTI_HOP", "TEMPORAL", "CONTRADICTION", "AGGREGATION"}
@@ -112,11 +119,13 @@ async def reason(
         "Always cite sources. Never fabricate information."
     )
 
-    response = await ollama_client.generate(
+    response = await generate_for_task(
+        task=ModelTask.interactive_heavy,
         prompt=prompt,
         system=system,
         temperature=0.3,
         max_tokens=2048,
+        operation="query_reason",
     )
 
     return response.strip()
@@ -164,11 +173,13 @@ async def verify_answer(
             context=context, question=question, answer=answer
         )
 
-        response = await ollama_client.generate(
+        response = await generate_for_task(
+            task=ModelTask.interactive_heavy,
             prompt=prompt,
             system="You are a strict verification agent. Be critical and fact-check carefully.",
             temperature=0.0,
             max_tokens=512,
+            operation="query_critic",
         )
 
         lines = response.strip().split("\n", 1)
@@ -278,6 +289,26 @@ async def process_query(
     8. Return AnswerPacket
     """
     logger.info("query.processing", question=question[:100])
+
+    lane_ok, _ = await ensure_lane(ModelTask.interactive_heavy, operation="query_process")
+    if not lane_ok:
+        await emit_incident(
+            "reasoning",
+            "query_process",
+            "GPU interactive lane unavailable; request blocked.",
+            severity="error",
+            blocked=True,
+            payload={"question_preview": question[:80]},
+        )
+        return AnswerPacket(
+            answer="Interactive reasoning is currently unavailable because the GPU model lane is down.",
+            confidence="none",
+            confidence_score=0.0,
+            uncertainty_reason="GPU lane unavailable",
+            sources=[],
+            verification="REJECT",
+            reasoning_chain="Query blocked by runtime policy: interactive_heavy requires GPU lane.",
+        )
 
     # Step 1: Classify query
     query_type = await classify_query(question)

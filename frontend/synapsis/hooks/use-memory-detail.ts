@@ -8,7 +8,6 @@ import { useState, useEffect, useCallback } from "react";
 import type { MemoryDetail } from "@/types/contracts";
 import type { AsyncState } from "@/types/ui";
 import { apiClient } from "@/lib/api/client";
-import { MOCK_MEMORY_DETAIL } from "@/mocks/fixtures";
 
 export function useMemoryDetail(
   id: string | null
@@ -27,7 +26,7 @@ export function useMemoryDetail(
     if (result.ok) {
       setState({ status: "success", data: result.data, error: null });
     } else {
-      setState({ status: "success", data: MOCK_MEMORY_DETAIL, error: null });
+      setState({ status: "error", data: null, error: result.error });
     }
   }, [id]);
 

@@ -207,6 +207,7 @@ class MemoryDetail(BaseModel):
     source_uri: str | None = None
     ingested_at: str
     status: str
+    enrichment_status: str | None = None
     summary: str | None = None
     category: str | None = None
     entities: list[str] = Field(default_factory=list)
@@ -222,3 +223,26 @@ class MemoryStats(BaseModel):
     categories: dict[str, int] = Field(default_factory=dict)
     modalities: dict[str, int] = Field(default_factory=dict)
     entity_types: dict[str, int] = Field(default_factory=dict)
+
+
+# ---------------------------------------------------------------------------
+# Runtime incidents / policy
+# ---------------------------------------------------------------------------
+
+
+class RuntimeIncident(BaseModel):
+    id: str
+    timestamp: str
+    subsystem: str
+    operation: str
+    reason: str
+    severity: str  # "info" | "warning" | "error" | "critical"
+    blocked: bool = False
+    payload: dict | None = None
+
+
+class RuntimePolicyResponse(BaseModel):
+    fail_fast: bool
+    allow_model_fallback: bool
+    lane_assignment: dict[str, str]
+    outage_policy: str

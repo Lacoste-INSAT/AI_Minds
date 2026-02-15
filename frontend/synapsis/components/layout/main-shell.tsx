@@ -12,6 +12,8 @@ import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "./app-sidebar";
 import { AppHeader } from "./app-header";
 import { ErrorBoundary } from "@/components/shared/error-boundary";
+import { SystemHealthBanner } from "@/components/shared/system-health-banner";
+import { RuntimeIncidentsBanner } from "@/components/shared/runtime-incidents-banner";
 
 interface MainShellProps {
   children: React.ReactNode;
@@ -23,6 +25,8 @@ export function MainShell({ children }: MainShellProps) {
       <AppSidebar />
       <SidebarInset>
         <AppHeader />
+        <SystemHealthBanner />
+        <RuntimeIncidentsBanner />
         <main id="main-content" className="flex-1 overflow-auto p-6" tabIndex={-1}>
           <ErrorBoundary section="Application">
             {children}

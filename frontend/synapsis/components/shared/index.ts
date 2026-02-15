@@ -7,5 +7,7 @@ export { IngestionStatus } from "./ingestion-status";
 export { ThemeToggle } from "./theme-toggle";
 export { ErrorAlert } from "./error-alert";
 export { ErrorBoundary } from "./error-boundary";
+export { SystemHealthBanner } from "./system-health-banner";
+export { RuntimeIncidentsBanner } from "./runtime-incidents-banner";
 export { InsightCard } from "./insight-card";
 export { PdfViewer } from "./pdf-viewer";

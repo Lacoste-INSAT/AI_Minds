@@ -46,6 +46,8 @@ export function useIngestionStream(): UseIngestionStreamReturn {
         return "File deleted";
       case "file_error":
         return "File processing error";
+      case "incident":
+        return "Runtime incident";
       default:
         return "Status update";
     }
@@ -86,6 +88,11 @@ export function useIngestionStream(): UseIngestionStreamReturn {
         // Silent — too noisy to toast every processed file
         // But refresh polling after a batch
         pollingStatus.refetch();
+        break;
+      case "incident":
+        toast.warning("Runtime incident", {
+          description: typeof msg.payload?.reason === "string" ? msg.payload.reason : "An incident was reported by backend runtime.",
+        });
         break;
     }
   }, [pollingStatus]);

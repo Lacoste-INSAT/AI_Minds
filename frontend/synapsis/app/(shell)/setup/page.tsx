@@ -4,10 +4,9 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { WizardSteps } from "@/components/setup/wizard-steps";
 import { useConfig } from "@/hooks/use-config";
+import { ErrorAlert } from "@/components/shared/error-alert";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import type { SetupState } from "@/types/ui";
-
-const MOCK_SETUP_COMPLETE_KEY = "synapsis.setup.complete";
 
 const DEFAULT_EXCLUSIONS = [
   "node_modules/**",
@@ -18,7 +17,7 @@ const DEFAULT_EXCLUSIONS = [
 
 export default function SetupPage() {
   const router = useRouter();
-  const { data, saveConfig, isSaving } = useConfig();
+  const { data, status, error, saveConfig, refetch, isSaving } = useConfig();
   const initializedFromConfigRef = useRef(false);
 
   const [state, setState] = useState<SetupState>({
@@ -57,9 +56,6 @@ export default function SetupPage() {
       exclude_patterns: state.exclusions,
     });
     if (success) {
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(MOCK_SETUP_COMPLETE_KEY, "true");
-      }
       updateState({ isComplete: true });
       router.push("/chat");
     }
@@ -68,6 +64,15 @@ export default function SetupPage() {
   return (
     <ScrollArea className="h-full">
       <div className="py-8">
+        {status === "error" && (
+          <ErrorAlert
+            className="mx-auto mb-4 max-w-2xl"
+            severity="error"
+            title="Setup data unavailable"
+            message={error ?? "Unable to load setup configuration from backend."}
+            onRetry={refetch}
+          />
+        )}
         <WizardSteps
           state={state}
           onStateChange={updateState}

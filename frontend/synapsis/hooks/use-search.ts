@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { TimelineItem } from "@/types/contracts";
+import type { MemorySearchResult, TimelineItem } from "@/types/contracts";
 import type {
   AsyncState,
   EntityType,
@@ -15,7 +15,6 @@ import type {
   SearchResult,
 } from "@/types/ui";
 import { apiClient } from "@/lib/api/client";
-import { MOCK_TIMELINE_ITEMS } from "@/mocks/fixtures";
 import { APP_DEFAULTS } from "@/lib/constants";
 
 interface UseSearchReturn extends AsyncState<SearchResult[]> {
@@ -60,30 +59,20 @@ export function useSearch(): UseSearchReturn {
   }, []);
 
   const toSearchResults = useCallback(
-    (items: TimelineItem[]): SearchResult[] => {
+    (items: TimelineItem[], memoryHits: MemorySearchResult[]): SearchResult[] => {
       const query = filters.query.toLowerCase().trim();
-      const docs = items
-        .filter((item) => {
-          if (filters.category !== "all" && item.category !== filters.category) {
-            return false;
-          }
-          if (filters.modality !== "all" && item.modality !== filters.modality) {
-            return false;
-          }
-          return true;
-        })
-        .map((item) => ({
-          id: item.id,
-          title: item.title,
-          snippet: item.summary,
-          modality: item.modality,
-          category: item.category,
-          entities: item.entities,
+      const docs = memoryHits.map((hit) => ({
+          id: hit.document_id,
+          title: hit.filename,
+          snippet: hit.summary ?? hit.content,
+          modality: hit.modality,
+          category: hit.category ?? "uncategorized",
+          entities: [],
           score: 1,
-          source_uri: item.source_uri,
-          ingested_at: item.ingested_at,
+          source_uri: "",
+          ingested_at: hit.ingested_at,
           group: "documents" as const,
-          target: { route: "/timeline" as const, id: item.id },
+          target: { route: "/timeline" as const, id: hit.document_id },
         }));
 
       const entities = Array.from(
@@ -147,28 +136,33 @@ export function useSearch(): UseSearchReturn {
 
     setState((prev) => ({ ...prev, status: "loading" }));
 
-    const result = await apiClient.getTimeline(1, 50, {
-      search: filters.query,
-      modality: filters.modality !== "all" ? filters.modality : undefined,
-      category: filters.category !== "all" ? filters.category : undefined,
-    });
+    const [result, timeline] = await Promise.all([
+      apiClient.searchMemory(filters.query, {
+        modality: filters.modality !== "all" ? filters.modality : undefined,
+        category: filters.category !== "all" ? filters.category : undefined,
+        limit: 50,
+      }),
+      apiClient.getTimeline(1, 50, { search: filters.query }),
+    ]);
 
-    if (result.ok) {
+    if (result.ok && timeline.ok) {
       setState({
         status: "success",
-        data: toSearchResults(result.data.items),
+        data: toSearchResults(timeline.data.items, result.data),
         error: null,
       });
-    } else {
-      // Fallback: filter mock data client-side
-      const query = filters.query.toLowerCase();
-      const filtered = MOCK_TIMELINE_ITEMS.filter(
-        (item) =>
-          item.title.toLowerCase().includes(query) ||
-          item.summary.toLowerCase().includes(query) ||
-          item.entities.some((e) => e.toLowerCase().includes(query))
-      );
-      setState({ status: "success", data: toSearchResults(filtered), error: null });
+    } else if (!result.ok) {
+      setState({
+        status: "error",
+        data: [],
+        error: result.error,
+      });
+    } else if (!timeline.ok) {
+      setState({
+        status: "error",
+        data: [],
+        error: timeline.error,
+      });
     }
   }, [filters, toSearchResults]);
 

@@ -10,12 +10,13 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sh
 import { MessageList } from "@/components/chat/message-list";
 import { ChatInput } from "@/components/chat/chat-input";
 import { SourcePanel } from "@/components/chat/source-panel";
+import { ErrorAlert } from "@/components/shared/error-alert";
 import { useChat } from "@/hooks/use-chat";
 import { useIsMobile } from "@/hooks/use-mobile";
 import type { AnswerPacket } from "@/types/contracts";
 
 export default function ChatPage() {
-  const { messages, status, sendMessage } = useChat();
+  const { messages, status, error, sendMessage } = useChat();
   const [selectedAnswer, setSelectedAnswer] = useState<AnswerPacket | null>(null);
   const [highlightedSource, setHighlightedSource] = useState<number | undefined>();
   const isMobile = useIsMobile();
@@ -39,6 +40,14 @@ export default function ChatPage() {
         className="flex-1"
       />
       <div className="border-t p-4">
+        {error && (
+          <ErrorAlert
+            className="mb-3"
+            severity="error"
+            title="Chat stream failed"
+            message={error}
+          />
+        )}
         <ChatInput
           onSend={sendMessage}
           isLoading={status === "loading"}

@@ -2,16 +2,13 @@
 
 /**
  * React hook for chat query operations.
- * Supports both streaming (WS) and request-response (REST) modes.
- * Falls back to REST if streaming fails.
+ * Uses streaming mode (WS) without silent fallback paths.
  */
 
 import { useState, useCallback, useRef } from "react";
-import type { AnswerPacket, QueryRequest } from "@/types/contracts";
+import type { AnswerPacket } from "@/types/contracts";
 import type { ChatMessage, AsyncStatus } from "@/types/ui";
-import { apiClient } from "@/lib/api/client";
 import { streamQuery } from "@/lib/api/ws-client";
-import { MOCK_ANSWER_HIGH } from "@/mocks/fixtures";
 import { createId } from "@/lib/utils";
 
 interface UseChatReturn {
@@ -49,7 +46,6 @@ export function useChat(): UseChatReturn {
     setStatus("loading");
     setError(null);
 
-    // Try streaming first
     const cleanup = streamQuery(
       { question },
       {
@@ -73,41 +69,19 @@ export function useChat(): UseChatReturn {
           setStatus("success");
         },
         onError: async (wsError) => {
-          // Fallback to REST
-          const request: QueryRequest = { question };
-          const result = await apiClient.ask(request);
-
-          if (result.ok) {
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId
-                  ? {
-                      ...m,
-                      content: result.data.answer,
-                      answer: result.data,
-                      isStreaming: false,
-                    }
-                  : m
-              )
-            );
-            setStatus("success");
-          } else {
-            // Final fallback to mock
-            setMessages((prev) =>
-              prev.map((m) =>
-                m.id === assistantId
-                  ? {
-                      ...m,
-                      content: MOCK_ANSWER_HIGH.answer,
-                      answer: MOCK_ANSWER_HIGH,
-                      isStreaming: false,
-                    }
-                  : m
-              )
-            );
-            setStatus("success");
-            setError(wsError);
-          }
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === assistantId
+                ? {
+                    ...m,
+                    content: "Unable to complete streaming response.",
+                    isStreaming: false,
+                  }
+                : m
+            )
+          );
+          setStatus("error");
+          setError(wsError);
         },
       }
     );

@@ -2,7 +2,7 @@
 
 /**
  * useInsights — Hook for consuming insights endpoints.
- * Fetches digest, patterns, or all insights with mock fallback.
+ * Fetches digest, patterns, and all insights from live backend.
  *
  * Source: FE-056 specification, BACKEND_CONTRACT_ALIGNMENT.md
  */
@@ -11,7 +11,6 @@ import { useState, useEffect, useCallback } from "react";
 import type { InsightItem, DigestResponse, PatternsResponse } from "@/types/contracts";
 import type { AsyncState } from "@/types/ui";
 import { apiClient } from "@/lib/api/client";
-import { MOCK_DIGEST, MOCK_PATTERNS, MOCK_INSIGHTS } from "@/mocks/fixtures";
 
 interface UseInsightsReturn {
   digest: AsyncState<DigestResponse>;
@@ -49,23 +48,23 @@ export function useInsights(): UseInsightsReturn {
       apiClient.getAllInsights(),
     ]);
 
-    setDigest({
-      status: "success",
-      data: digestResult.ok ? digestResult.data : MOCK_DIGEST,
-      error: null,
-    });
+    setDigest(
+      digestResult.ok
+        ? { status: "success", data: digestResult.data, error: null }
+        : { status: "error", data: null, error: digestResult.error }
+    );
 
-    setPatterns({
-      status: "success",
-      data: patternsResult.ok ? patternsResult.data : MOCK_PATTERNS,
-      error: null,
-    });
+    setPatterns(
+      patternsResult.ok
+        ? { status: "success", data: patternsResult.data, error: null }
+        : { status: "error", data: null, error: patternsResult.error }
+    );
 
-    setAllInsights({
-      status: "success",
-      data: allResult.ok ? allResult.data : MOCK_INSIGHTS,
-      error: null,
-    });
+    setAllInsights(
+      allResult.ok
+        ? { status: "success", data: allResult.data, error: null }
+        : { status: "error", data: null, error: allResult.error }
+    );
   }, []);
 
   useEffect(() => {

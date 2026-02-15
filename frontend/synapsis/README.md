@@ -4,7 +4,7 @@ Frontend app for Synapsis, built with Next.js App Router and TypeScript.
 
 ## Scope
 
-This workspace is frontend-only and consumes backend contracts from `http://127.0.0.1:8000` (or mocks).
+This workspace is frontend-only and consumes backend contracts from `http://127.0.0.1:8000` in strict live mode.
 
 Required routes:
 
@@ -31,9 +31,8 @@ npm run gates
 
 The client reads connectivity from `lib/env.ts`:
 
-1. `NEXT_PUBLIC_API_MODE=mock|live` (default: `mock`)
-2. `NEXT_PUBLIC_API_BASE_URL` (live mode only, localhost-only validated)
-3. `NEXT_PUBLIC_WS_BASE_URL` (optional, localhost-only validated)
+1. `NEXT_PUBLIC_API_BASE_URL` (localhost-only validated, default `http://127.0.0.1:8000`)
+2. `NEXT_PUBLIC_WS_BASE_URL` (optional, localhost-only validated)
 
 ## Current Base Structure
 
@@ -62,12 +61,6 @@ hooks/
 lib/
   api/
 types/
-mocks/
-  browser.ts
-  handlers.ts
-  server.ts
-  ws-mock.ts
-  fixtures/
 tests/
   unit/
   integration/
@@ -108,4 +101,4 @@ These reflect the documented backend endpoints and payloads, including:
 1. No upload/manual ingestion UI.
 2. Trust fields must always be visible on answers (`confidence`, `verification`, `sources`).
 3. Accessibility baseline is mandatory.
-4. Use deterministic mocks when backend is unavailable.
+4. Runtime uses strict live backend behavior (no mock/fallback substitution of backend data).

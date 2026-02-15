@@ -53,7 +53,7 @@ async def ingestion_websocket(websocket: WebSocket):
     try:
         await websocket.send_json({
             "event": "status",
-            "data": ingestion_state.get_status(),
+            "payload": ingestion_state.get_status(),
         })
 
         while True:
@@ -63,7 +63,7 @@ async def ingestion_websocket(websocket: WebSocket):
             if data.get("command") == "status":
                 await websocket.send_json({
                     "event": "status",
-                    "data": ingestion_state.get_status(),
+                    "payload": ingestion_state.get_status(),
                 })
 
     except WebSocketDisconnect:

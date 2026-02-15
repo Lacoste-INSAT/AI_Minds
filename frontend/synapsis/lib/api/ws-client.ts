@@ -10,14 +10,12 @@ import {
   QueryStreamMessageSchema,
   IngestionWsMessageSchema,
 } from "./schemas";
-import { API_MODE } from "@/lib/env";
 import type {
   QueryStreamMessage,
   QueryStreamRequest,
   IngestionWsMessage,
 } from "@/types/contracts";
 import { safeJsonParse } from "@/lib/utils";
-import { connectMockIngestionStream, streamMockQuery } from "@/mocks/ws-mock";
 
 // ─── Query Stream ───
 
@@ -36,10 +34,6 @@ export function streamQuery(
   request: QueryStreamRequest,
   callbacks: QueryStreamCallbacks
 ): () => void {
-  if (API_MODE === "mock") {
-    return streamMockQuery(request, callbacks);
-  }
-
   const ws = new WebSocket(WS_ENDPOINTS.queryStream);
   let closed = false;
 
@@ -108,10 +102,6 @@ export function connectIngestionStream(
   callbacks: IngestionStreamCallbacks,
   options?: { maxRetries?: number }
 ): () => void {
-  if (API_MODE === "mock") {
-    return connectMockIngestionStream(callbacks);
-  }
-
   const maxRetries = options?.maxRetries ?? 5;
   let retries = 0;
   let ws: WebSocket | null = null;

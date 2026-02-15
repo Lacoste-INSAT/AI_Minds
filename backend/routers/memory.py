@@ -416,6 +416,7 @@ async def get_memory_detail(memory_id: str):
         source_uri=doc["source_uri"],
         ingested_at=doc["ingested_at"],
         status=doc["status"],
+        enrichment_status=doc["enrichment_status"] if "enrichment_status" in doc.keys() else None,
         summary=summary,
         category=category,
         entities=entities,

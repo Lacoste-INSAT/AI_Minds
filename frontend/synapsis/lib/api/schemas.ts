@@ -13,7 +13,7 @@ export const ConfidenceLevelSchema = z.enum(["high", "medium", "low", "none"]);
 export const VerificationStatusSchema = z.enum(["APPROVE", "REVISE", "REJECT"]);
 export const ServiceStateSchema = z.enum(["up", "down"]);
 export const HealthStateSchema = z.enum(["healthy", "degraded", "unhealthy"]);
-export const TimelineModalitySchema = z.enum(["text", "pdf", "image", "audio"]);
+export const TimelineModalitySchema = z.enum(["text", "pdf", "image", "audio", "json"]);
 export const IngestionWsEventTypeSchema = z.enum([
   "status",
   "file_processed",
@@ -21,6 +21,7 @@ export const IngestionWsEventTypeSchema = z.enum([
   "file_error",
   "scan_started",
   "scan_completed",
+  "incident",
 ]);
 
 // ─── Evidence ───
@@ -43,7 +44,7 @@ export const AnswerPacketSchema = z.object({
   uncertainty_reason: z.string().nullable(),
   sources: z.array(ChunkEvidenceSchema),
   verification: VerificationStatusSchema,
-  reasoning_chain: z.string(),
+  reasoning_chain: z.string().nullable(),
 });
 
 // ─── Query Stream ───
@@ -82,10 +83,10 @@ export const GraphDataSchema = z.object({
 export const TimelineItemSchema = z.object({
   id: z.string(),
   title: z.string(),
-  summary: z.string(),
-  category: z.string(),
+  summary: z.string().nullable(),
+  category: z.string().nullable(),
   modality: TimelineModalitySchema,
-  source_uri: z.string(),
+  source_uri: z.string().nullable(),
   ingested_at: z.string(),
   entities: z.array(z.string()),
 });
@@ -108,15 +109,16 @@ export const MemoryDetailChunkSchema = z.object({
 export const MemoryDetailSchema = z.object({
   id: z.string(),
   filename: z.string(),
-  modality: TimelineModalitySchema,
-  source_uri: z.string(),
+  modality: z.string(),
+  source_uri: z.string().nullable(),
   ingested_at: z.string(),
   status: z.string(),
-  summary: z.string(),
-  category: z.string(),
+  enrichment_status: z.string().nullable().optional(),
+  summary: z.string().nullable(),
+  category: z.string().nullable(),
   entities: z.array(z.string()),
   action_items: z.array(z.string()),
-  chunks: z.array(MemoryDetailChunkSchema),
+  chunks: z.array(z.record(z.unknown())),
 });
 
 // ─── Memory Stats ───
@@ -131,10 +133,23 @@ export const MemoryStatsSchema = z.object({
   entity_types: z.record(z.number()),
 });
 
+export const MemorySearchResultSchema = z.object({
+  chunk_id: z.string(),
+  content: z.string(),
+  chunk_index: z.number(),
+  summary: z.string().nullable(),
+  category: z.string().nullable(),
+  action_items: z.array(z.string()),
+  document_id: z.string(),
+  filename: z.string(),
+  modality: TimelineModalitySchema,
+  ingested_at: z.string(),
+});
+
 // ─── Config ───
 
 export const WatchedDirectorySchema = z.object({
-  id: z.string(),
+  id: z.string().nullable(),
   path: z.string(),
   enabled: z.boolean(),
   exclude_patterns: z.array(z.string()),
@@ -155,7 +170,7 @@ export const IngestionStatusResponseSchema = z.object({
   files_processed: z.number(),
   files_failed: z.number(),
   files_skipped: z.number(),
-  last_scan_time: z.string(),
+  last_scan_time: z.string().nullable(),
   is_watching: z.boolean(),
   watched_directories: z.array(z.string()),
 });
@@ -171,11 +186,31 @@ export const IngestionWsMessageSchema = z.object({
   payload: z.record(z.unknown()),
 });
 
+export const IncidentSeveritySchema = z.enum(["info", "warning", "error", "critical"]);
+
+export const RuntimeIncidentSchema = z.object({
+  id: z.string(),
+  timestamp: z.string(),
+  subsystem: z.string(),
+  operation: z.string(),
+  reason: z.string(),
+  severity: IncidentSeveritySchema,
+  blocked: z.boolean(),
+  payload: z.record(z.unknown()).nullable(),
+});
+
+export const RuntimePolicyResponseSchema = z.object({
+  fail_fast: z.boolean(),
+  allow_model_fallback: z.boolean(),
+  lane_assignment: z.record(z.string()),
+  outage_policy: z.string(),
+});
+
 // ─── Health ───
 
 export const ServiceHealthDetailSchema = z.object({
   status: ServiceStateSchema,
-  detail: z.record(z.unknown()),
+  detail: z.record(z.unknown()).nullable(),
 });
 
 export const HealthResponseSchema = z.object({
@@ -183,7 +218,7 @@ export const HealthResponseSchema = z.object({
   ollama: ServiceHealthDetailSchema,
   qdrant: ServiceHealthDetailSchema,
   sqlite: ServiceHealthDetailSchema,
-  disk_free_gb: z.number(),
+  disk_free_gb: z.number().nullable(),
   uptime_seconds: z.number(),
 });
 
@@ -200,7 +235,7 @@ export const InsightItemSchema = z.object({
 
 export const DigestResponseSchema = z.object({
   insights: z.array(InsightItemSchema),
-  generated_at: z.string(),
+  generated_at: z.string().nullable(),
 });
 
 export const PatternsResponseSchema = z.object({

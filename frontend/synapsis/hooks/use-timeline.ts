@@ -2,14 +2,13 @@
 
 /**
  * React hook for paginated timeline data.
- * Falls back to mock data when backend is unavailable.
+ * Uses live backend data only.
  */
 
 import { useState, useEffect, useCallback } from "react";
 import type { TimelineResponse } from "@/types/contracts";
 import type { AsyncState, TimelineFilters } from "@/types/ui";
 import { apiClient } from "@/lib/api/client";
-import { MOCK_TIMELINE_RESPONSE } from "@/mocks/fixtures";
 import { APP_DEFAULTS } from "@/lib/constants";
 
 interface UseTimelineReturn extends AsyncState<TimelineResponse> {
@@ -58,7 +57,7 @@ export function useTimeline(): UseTimelineReturn {
     if (result.ok) {
       setState({ status: "success", data: result.data, error: null });
     } else {
-      setState({ status: "success", data: MOCK_TIMELINE_RESPONSE, error: null });
+      setState({ status: "error", data: null, error: result.error });
     }
   }, [page, filters]);
 

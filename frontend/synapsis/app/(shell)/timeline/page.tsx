@@ -5,11 +5,12 @@ import { useInsights } from "@/hooks/use-insights";
 import { TimelineFiltersBar } from "@/components/timeline/timeline-filters";
 import { TimelineFeed } from "@/components/timeline/timeline-feed";
 import { InsightsStrip } from "@/components/timeline/insights-strip";
+import { ErrorAlert } from "@/components/shared/error-alert";
 import { Button } from "@/components/ui/button";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 
 export default function TimelinePage() {
-  const { data, status, filters, setFilters, page, setPage } = useTimeline();
+  const { data, status, error, filters, setFilters, page, setPage, refetch } = useTimeline();
   const { digest } = useInsights();
 
   const totalPages = data ? Math.ceil(data.total / data.page_size) : 1;
@@ -33,6 +34,15 @@ export default function TimelinePage() {
         onFilterChange={setFilters}
         totalItems={data?.total}
       />
+
+      {status === "error" && (
+        <ErrorAlert
+          severity="error"
+          title="Timeline unavailable"
+          message={error ?? "Unable to load timeline data from backend."}
+          onRetry={refetch}
+        />
+      )}
 
       <TimelineFeed
         items={data?.items ?? []}
