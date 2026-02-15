@@ -1,36 +1,111 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Synapsis Frontend
 
-## Getting Started
+Frontend app for Synapsis, built with Next.js App Router and TypeScript.
 
-First, run the development server:
+## Scope
+
+This workspace is frontend-only and consumes backend contracts from `http://127.0.0.1:8000` (or mocks).
+
+Required routes:
+
+1. `/setup`
+2. `/chat`
+3. `/graph`
+4. `/timeline`
+5. `/search`
+
+## Local Commands
 
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm run build
+npm run lint
+npm run typecheck
+npm run test
+npm run test:contract
+npm run gates
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Environment
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+The client reads connectivity from `lib/env.ts`:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+1. `NEXT_PUBLIC_API_MODE=mock|live` (default: `mock`)
+2. `NEXT_PUBLIC_API_BASE_URL` (live mode only, localhost-only validated)
+3. `NEXT_PUBLIC_WS_BASE_URL` (optional, localhost-only validated)
 
-## Learn More
+## Current Base Structure
 
-To learn more about Next.js, take a look at the following resources:
+```text
+app/
+  layout.tsx
+  page.tsx
+  (shell)/
+    layout.tsx
+    setup/page.tsx
+    chat/page.tsx
+    graph/page.tsx
+    timeline/page.tsx
+    search/page.tsx
+components/
+  ui/
+  providers/
+  layout/
+  shared/
+  setup/
+  chat/
+  graph/
+  timeline/
+  search/
+hooks/
+lib/
+  api/
+types/
+mocks/
+  browser.ts
+  handlers.ts
+  server.ts
+  ws-mock.ts
+  fixtures/
+tests/
+  unit/
+  integration/
+  e2e/
+scripts/
+docs/
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Backend Contract Alignment
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Frontend contract interfaces are tracked in:
 
-## Deploy on Vercel
+1. `types/contracts.ts`
+2. `lib/api/schemas.ts`
+3. `lib/api/endpoints.ts`
+4. `lib/api/client.ts`
+5. `lib/api/ws-client.ts`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+These reflect the documented backend endpoints and payloads, including:
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+1. `POST /query/ask`
+2. `WS /query/stream`
+3. `GET /memory/timeline`
+4. `GET /memory/graph`
+5. `GET /memory/stats`
+6. `GET /memory/{id}`
+7. `GET/PUT /config/sources`
+8. `GET /ingestion/status`
+9. `POST /ingestion/scan`
+10. `WS /ingestion/ws`
+11. `GET /health`
+12. `GET /insights/digest`
+13. `GET /insights/patterns`
+14. `GET /insights/all`
+
+## Constraints
+
+1. No upload/manual ingestion UI.
+2. Trust fields must always be visible on answers (`confidence`, `verification`, `sources`).
+3. Accessibility baseline is mandatory.
+4. Use deterministic mocks when backend is unavailable.
