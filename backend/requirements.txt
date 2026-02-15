@@ -23,8 +23,8 @@ rank-bm25>=0.2.2
 # === Knowledge Graph ===
 networkx>=3.4
 
-# === NLP / NER (Person 3) ===
-# spacy>=3.8
+# === NLP / NER ===
+spacy>=3.8
 
 # === Document Parsing (Person 3) ===
 # pymupdf>=1.25
