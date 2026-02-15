@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useFetch } from "@/lib/hooks";
 import { getIngestionStatus, triggerScan, getSources, updateSources, type SourceConfig } from "@/lib/api";
-import { FolderOpen, RefreshCw, Play, Check, AlertTriangle, Clock, FileText, Plus, X } from "lucide-react";
+import { FolderOpen, RefreshCw, Play, Check, AlertTriangle, Clock, FileText, Plus, X, HardDrive } from "lucide-react";
 
 const dirPaths = (dirs: SourceConfig[]) => dirs.map((d) => d.path);
 
@@ -76,82 +76,117 @@ export default function IngestionPage() {
   };
 
   return (
-    <div className="animate-fade-in space-y-6 max-w-5xl">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Ingestion Pipeline</h2>
-          <p className="text-sm text-muted mt-1">Manage watched directories, trigger scans, and view processing status</p>
+    <div className="animate-fade-in space-y-6 max-w-6xl mx-auto w-full relative">
+      {/* Background blobs */}
+      <div className="pointer-events-none absolute -top-20 -left-20 w-[400px] h-[400px] rounded-full bg-cyan-500/[0.03] blur-3xl animate-float" />
+      <div className="pointer-events-none absolute top-60 -right-32 w-[350px] h-[350px] rounded-full bg-accent/[0.03] blur-3xl animate-float-delay" />
+
+      {/* Hero header */}
+      <div className="relative overflow-hidden rounded-2xl gradient-border p-6 animate-hero-reveal"
+           style={{ background: "linear-gradient(135deg, rgba(6,182,212,0.08) 0%, rgba(99,102,241,0.04) 50%, rgba(17,24,39,0.95) 100%)" }}>
+        <div className="absolute top-0 h-full w-[20%] bg-gradient-to-r from-transparent via-cyan-500/[0.04] to-transparent animate-scanline pointer-events-none" />
+        <div className="relative z-10 flex items-end justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-2 h-2 rounded-full bg-cyan-400 animate-breathe" />
+              <span className="text-[11px] uppercase tracking-[0.2em] text-cyan-400/70 font-medium">Data Pipeline</span>
+            </div>
+            <h2 className="text-3xl font-extrabold bg-gradient-to-r from-white via-cyan-200 to-indigo-300 bg-clip-text text-transparent animate-gradient-text">
+              Ingestion Pipeline
+            </h2>
+            <p className="text-sm text-muted/80 mt-1.5">Manage watched directories, trigger scans, and view processing status</p>
+          </div>
+          <button
+            onClick={handleScan}
+            disabled={scanning}
+            className="flex items-center gap-2 bg-gradient-to-r from-accent to-cyan-500 hover:from-accent-light hover:to-cyan-400 px-5 py-2.5 rounded-xl font-medium transition-all disabled:opacity-50 shadow-lg shadow-accent/20 hover:shadow-accent/30 hover:translate-y-[-1px]"
+          >
+            {scanning ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
+            {scanning ? "Scanning..." : "Trigger Scan"}
+          </button>
         </div>
-        <button
-          onClick={handleScan}
-          disabled={scanning}
-          className="flex items-center gap-2 bg-accent hover:bg-accent/80 px-4 py-2 rounded-lg font-medium transition disabled:opacity-50"
-        >
-          {scanning ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Play className="w-4 h-4" />}
-          {scanning ? "Scanning..." : "Trigger Scan"}
-        </button>
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-cyan-500/30 to-transparent" />
       </div>
 
       {scanResult && (
-        <div className="bg-card border border-border rounded-lg p-3 text-sm text-accent">{scanResult}</div>
+        <div className="glass rounded-xl gradient-border p-3 text-sm text-accent-light flex items-center gap-2">
+          <Check className="w-4 h-4" /> {scanResult}
+        </div>
       )}
 
       {/* Watched directories */}
-      <div className="bg-card border border-border rounded-xl p-5">
-        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2"><FolderOpen className="w-5 h-5 text-accent" /> Watched Directories</h3>
+      <div className="glass rounded-2xl gradient-border p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-1 h-4 rounded-full bg-gradient-to-b from-cyan-400 to-blue-500" />
+          <h3 className="text-sm font-semibold flex items-center gap-2"><FolderOpen className="w-4 h-4 text-cyan-400" /> Watched Directories</h3>
+        </div>
         <div className="space-y-2 mb-3">
           {sources?.watched_directories?.length ? sources.watched_directories.map((d) => (
-            <div key={d.path} className="flex items-center justify-between bg-background rounded-lg px-3 py-2">
+            <div key={d.path} className="flex items-center justify-between bg-white/[0.02] rounded-xl px-4 py-2.5 ring-1 ring-white/[0.06] hover:ring-accent/20 transition-all group">
               <span className="text-sm font-mono">{d.path}</span>
-              <button onClick={() => removeDir(d.path)} className="text-red-400 hover:text-red-300"><X className="w-4 h-4" /></button>
+              <button onClick={() => removeDir(d.path)} className="text-red-400/60 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-4 h-4" /></button>
             </div>
           )) : (
-            <p className="text-sm text-muted">No directories configured</p>
+            <div className="flex flex-col items-center justify-center py-8 text-center rounded-xl border border-dashed border-white/[0.08]">
+              <FolderOpen className="w-8 h-8 text-muted/30 mb-2" />
+              <p className="text-sm text-muted">No directories configured</p>
+            </div>
           )}
         </div>
         <div className="flex gap-2">
-          <input value={newDir} onChange={(e) => setNewDir(e.target.value)} placeholder="Add directory path..." className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm" />
-          <button onClick={addDir} className="bg-accent hover:bg-accent/80 px-3 py-2 rounded-lg"><Plus className="w-4 h-4" /></button>
+          <input value={newDir} onChange={(e) => setNewDir(e.target.value)} placeholder="Add directory path..." className="flex-1 glass ring-1 ring-white/[0.06] focus:ring-accent/40 rounded-lg px-3 py-2 text-sm outline-none transition-all" />
+          <button onClick={addDir} className="bg-gradient-to-r from-accent to-cyan-500 hover:from-accent-light hover:to-cyan-400 px-3 py-2 rounded-lg transition-all"><Plus className="w-4 h-4" /></button>
         </div>
       </div>
 
       {/* Exclusion patterns */}
-      <div className="bg-card border border-border rounded-xl p-5">
-        <h3 className="text-lg font-semibold mb-3">Exclusion Patterns</h3>
+      <div className="glass rounded-2xl gradient-border p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-1 h-4 rounded-full bg-gradient-to-b from-amber-400 to-orange-500" />
+          <h3 className="text-sm font-semibold">Exclusion Patterns</h3>
+        </div>
         <div className="space-y-2 mb-3">
           {sources?.exclude_patterns?.length ? sources.exclude_patterns.map((p: string) => (
-            <div key={p} className="flex items-center justify-between bg-background rounded-lg px-3 py-2">
+            <div key={p} className="flex items-center justify-between bg-white/[0.02] rounded-xl px-4 py-2.5 ring-1 ring-white/[0.06] hover:ring-amber-500/20 transition-all group">
               <span className="text-sm font-mono">{p}</span>
-              <button onClick={() => removeExclude(p)} className="text-red-400 hover:text-red-300"><X className="w-4 h-4" /></button>
+              <button onClick={() => removeExclude(p)} className="text-red-400/60 hover:text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"><X className="w-4 h-4" /></button>
             </div>
           )) : (
-            <p className="text-sm text-muted">No exclusion patterns</p>
+            <div className="flex flex-col items-center justify-center py-8 text-center rounded-xl border border-dashed border-white/[0.08]">
+              <p className="text-sm text-muted">No exclusion patterns</p>
+            </div>
           )}
         </div>
         <div className="flex gap-2">
-          <input value={newExclude} onChange={(e) => setNewExclude(e.target.value)} placeholder="Add pattern (e.g. *.tmp)..." className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-sm" />
-          <button onClick={addExclude} className="bg-accent hover:bg-accent/80 px-3 py-2 rounded-lg"><Plus className="w-4 h-4" /></button>
+          <input value={newExclude} onChange={(e) => setNewExclude(e.target.value)} placeholder="Add pattern (e.g. *.tmp)..." className="flex-1 glass ring-1 ring-white/[0.06] focus:ring-accent/40 rounded-lg px-3 py-2 text-sm outline-none transition-all" />
+          <button onClick={addExclude} className="bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 px-3 py-2 rounded-lg transition-all"><Plus className="w-4 h-4" /></button>
         </div>
       </div>
 
       {/* Processing history */}
-      <div className="bg-card border border-border rounded-xl p-5">
-        <h3 className="text-lg font-semibold mb-3 flex items-center gap-2"><FileText className="w-5 h-5 text-accent" /> Recent Processing</h3>
+      <div className="glass rounded-2xl gradient-border p-6">
+        <div className="flex items-center gap-2 mb-4">
+          <div className="w-1 h-4 rounded-full bg-gradient-to-b from-accent to-purple-500" />
+          <h3 className="text-sm font-semibold flex items-center gap-2"><FileText className="w-4 h-4 text-accent-light" /> Recent Processing</h3>
+        </div>
         {loading ? (
-          <p className="text-sm text-muted">Loading...</p>
+          <div className="animate-shimmer rounded-xl p-4 text-sm text-muted">Loading...</div>
         ) : (status as any)?.recent_files?.length ? (
           <div className="space-y-2">
             {(status as any).recent_files.map((f: any, i: number) => (
-              <div key={i} className="flex items-center gap-3 bg-background rounded-lg px-3 py-2">
+              <div key={i} className="flex items-center gap-3 bg-white/[0.02] rounded-xl px-4 py-2.5 ring-1 ring-white/[0.04] hover:ring-white/[0.08] transition-all animate-slide-up" style={{ animationDelay: `${i * 50}ms` }}>
                 {statusIcon(f.status)}
                 <span className="flex-1 text-sm font-mono truncate">{f.filename || f.path || f.name}</span>
-                <span className="text-xs text-muted">{f.modality}</span>
-                <span className="text-xs text-muted">{f.chunks ?? "?"} chunks</span>
+                <span className="text-xs text-muted bg-white/[0.04] px-2 py-0.5 rounded-md">{f.modality}</span>
+                <span className="text-xs text-muted font-mono">{f.chunks ?? "?"} chunks</span>
               </div>
             ))}
           </div>
         ) : (
-          <p className="text-sm text-muted">No files processed yet</p>
+          <div className="flex flex-col items-center justify-center py-8 text-center rounded-xl border border-dashed border-white/[0.08]">
+            <HardDrive className="w-8 h-8 text-muted/30 mb-2" />
+            <p className="text-sm text-muted">No files processed yet</p>
+          </div>
         )}
       </div>
     </div>
