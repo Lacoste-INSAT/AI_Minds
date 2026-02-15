@@ -59,22 +59,30 @@ CREATE TABLE IF NOT EXISTS nodes (
     first_seen    TEXT NOT NULL,
     last_seen     TEXT NOT NULL,
     mention_count INTEGER DEFAULT 1,
-    source_chunks TEXT
+    source_chunks TEXT  -- DEPRECATED: kept for back-compat, use node_chunks table
+);
+
+-- Junction table: replaces the old comma-separated source_chunks column
+CREATE TABLE IF NOT EXISTS node_chunks (
+    node_id  TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    chunk_id TEXT NOT NULL REFERENCES chunks(id) ON DELETE CASCADE,
+    PRIMARY KEY (node_id, chunk_id)
 );
 
 CREATE TABLE IF NOT EXISTS edges (
     id           TEXT PRIMARY KEY,
-    source_id    TEXT NOT NULL REFERENCES nodes(id),
-    target_id    TEXT NOT NULL REFERENCES nodes(id),
+    source_id    TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
+    target_id    TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
     relationship TEXT NOT NULL,
     properties   TEXT,
     created_at   TEXT NOT NULL,
-    source_chunk TEXT
+    source_chunk TEXT,
+    UNIQUE(source_id, target_id, relationship)
 );
 
 CREATE TABLE IF NOT EXISTS beliefs (
     id            TEXT PRIMARY KEY,
-    node_id       TEXT NOT NULL REFERENCES nodes(id),
+    node_id       TEXT NOT NULL REFERENCES nodes(id) ON DELETE CASCADE,
     belief        TEXT NOT NULL,
     confidence    REAL,
     source_chunk  TEXT,
@@ -91,8 +99,11 @@ CREATE TABLE IF NOT EXISTS audit_log (
 
 CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id);
 CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id);
+CREATE INDEX IF NOT EXISTS idx_edges_triple ON edges(source_id, target_id, relationship);
 CREATE INDEX IF NOT EXISTS idx_nodes_type ON nodes(type);
 CREATE INDEX IF NOT EXISTS idx_nodes_name ON nodes(name);
+CREATE INDEX IF NOT EXISTS idx_node_chunks_node ON node_chunks(node_id);
+CREATE INDEX IF NOT EXISTS idx_node_chunks_chunk ON node_chunks(chunk_id);
 CREATE INDEX IF NOT EXISTS idx_beliefs_node ON beliefs(node_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks(document_id);
 CREATE INDEX IF NOT EXISTS idx_docs_checksum ON documents(checksum);
@@ -149,18 +160,30 @@ def init_db():
 # Audit helpers
 # ---------------------------------------------------------------------------
 
-def log_audit(event_type: str, payload: dict | None = None):
-    """Write an audit-log row."""
+def log_audit(event_type: str, payload: dict | None = None, *, conn=None):
+    """Write an audit-log row.
+
+    If *conn* is provided, reuse that connection (no extra open/close).
+    Otherwise open a short-lived connection.
+    """
     import uuid
     from datetime import datetime, timezone
 
-    with get_db() as conn:
+    row = (
+        str(uuid.uuid4()),
+        event_type,
+        json.dumps(payload) if payload else None,
+        datetime.now(timezone.utc).isoformat(),
+    )
+
+    if conn is not None:
         conn.execute(
             "INSERT INTO audit_log (id, event_type, payload, timestamp) VALUES (?, ?, ?, ?)",
-            (
-                str(uuid.uuid4()),
-                event_type,
-                json.dumps(payload) if payload else None,
-                datetime.now(timezone.utc).isoformat(),
-            ),
+            row,
         )
+    else:
+        with get_db() as c:
+            c.execute(
+                "INSERT INTO audit_log (id, event_type, payload, timestamp) VALUES (?, ?, ?, ?)",
+                row,
+            )

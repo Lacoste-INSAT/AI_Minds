@@ -1,9 +1,26 @@
 """
 Synapsis Backend — Memory Router
-GET /memory/graph — graph data for visualization
-GET /memory/timeline — chronological feed
-GET /memory/{id} — single knowledge card
-GET /memory/stats — counts, categories, entities
+
+Entity / Graph / Structured-DB endpoints:
+  GET    /memory/graph           — graph data for visualization
+  GET    /memory/graph/stats     — graph analytics (density, components, degrees)
+  GET    /memory/graph/centrality — centrality metrics (degree, betweenness, pagerank)
+  GET    /memory/graph/communities — community detection
+  GET    /memory/graph/subgraph  — extract subgraph for given entity names
+  GET    /memory/entities        — search / list entities
+  GET    /memory/entities/{id}   — single entity with edges + beliefs
+  PATCH  /memory/entities/{id}   — update entity fields
+  DELETE /memory/entities/{id}   — delete entity and its edges/beliefs
+  POST   /memory/entities/merge  — merge two entities
+  GET    /memory/entities/{id}/similar — similar entities (Jaccard)
+  GET    /memory/entities/{id}/beliefs — beliefs about an entity
+  POST   /memory/entities/{id}/beliefs — add a belief
+  GET    /memory/relationships   — query relationships
+  DELETE /memory/relationships/{id} — delete a relationship
+  GET    /memory/timeline        — chronological feed
+  GET    /memory/stats           — counts, categories, entities
+  GET    /memory/search          — full-text search across chunks
+  GET    /memory/{id}            — single knowledge card
 """
 
 from __future__ import annotations
@@ -11,7 +28,7 @@ from __future__ import annotations
 import json
 from typing import Optional
 
-from fastapi import APIRouter, Query, HTTPException
+from fastapi import APIRouter, Query, HTTPException, Body
 import structlog
 
 from backend.database import get_db
@@ -24,6 +41,7 @@ from backend.models.schemas import (
     MemoryDetail,
     MemoryStats,
 )
+from backend.services import graph_service, memory_service
 
 logger = structlog.get_logger(__name__)
 
@@ -35,14 +53,185 @@ async def get_graph(
     limit: int = Query(200, ge=1, le=1000, description="Max nodes to return"),
 ):
     """Return graph data (nodes + edges) for frontend visualization."""
-    from backend.services.graph_service import get_graph_data
-
-    data = get_graph_data(limit=limit)
+    data = graph_service.get_graph_data(limit=limit)
 
     nodes = [GraphNode(**n) for n in data["nodes"]]
     edges = [GraphEdge(**e) for e in data["edges"]]
 
     return GraphData(nodes=nodes, edges=edges)
+
+
+# ---------------------------------------------------------------------------
+# Graph analytics endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/graph/stats")
+async def get_graph_stats_endpoint():
+    """Graph statistics: density, components, degree distribution, type counts."""
+    return graph_service.get_graph_stats()
+
+
+@router.get("/graph/centrality")
+async def get_centrality(
+    top_k: int = Query(20, ge=1, le=100),
+):
+    """Centrality metrics: degree, betweenness, PageRank."""
+    return graph_service.get_centrality_metrics(top_k=top_k)
+
+
+@router.get("/graph/communities")
+async def get_communities():
+    """Community detection using label propagation."""
+    communities = graph_service.detect_communities()
+    return {"communities": communities, "count": len(communities)}
+
+
+@router.get("/graph/subgraph")
+async def get_subgraph(
+    entities: str = Query(..., description="Comma-separated entity names"),
+    depth: int = Query(1, ge=0, le=3),
+):
+    """Extract subgraph around the given entity names."""
+    names = [n.strip() for n in entities.split(",") if n.strip()]
+    return graph_service.get_subgraph_for_entities(names, max_depth=depth)
+
+
+# ---------------------------------------------------------------------------
+# Entity CRUD endpoints
+# ---------------------------------------------------------------------------
+
+
+@router.get("/entities")
+async def list_entities(
+    q: Optional[str] = Query(None, description="Search query for entity names"),
+    entity_type: Optional[str] = Query(None, description="Filter by entity type"),
+    limit: int = Query(50, ge=1, le=500),
+    offset: int = Query(0, ge=0),
+    sort_by: str = Query("mention_count", pattern="^(mention_count|last_seen|name)$"),
+):
+    """Search and list entities with filters."""
+    return memory_service.search_entities(query=q, entity_type=entity_type, limit=limit, offset=offset, sort_by=sort_by)
+
+
+@router.get("/entities/{entity_id}")
+async def get_entity_detail(entity_id: str):
+    """Get a single entity with its relationships and beliefs."""
+    entity = memory_service.get_entity(entity_id)
+    if not entity:
+        raise HTTPException(status_code=404, detail="Entity not found")
+    return entity
+
+
+@router.patch("/entities/{entity_id}")
+async def update_entity_endpoint(
+    entity_id: str,
+    name: Optional[str] = Body(None),
+    entity_type: Optional[str] = Body(None),
+    properties: Optional[dict] = Body(None),
+):
+    """Update an entity's fields."""
+    success = memory_service.update_entity(entity_id, name=name, entity_type=entity_type, properties=properties)
+    if not success:
+        raise HTTPException(status_code=404, detail="Entity not found or nothing to update")
+    return {"status": "updated", "entity_id": entity_id}
+
+
+@router.delete("/entities/{entity_id}")
+async def delete_entity_endpoint(entity_id: str):
+    """Delete an entity and all its edges / beliefs."""
+    success = memory_service.delete_entity(entity_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Entity not found")
+    return {"status": "deleted", "entity_id": entity_id}
+
+
+@router.post("/entities/merge")
+async def merge_entities_endpoint(
+    primary_id: str = Body(..., description="ID of the entity to keep"),
+    secondary_id: str = Body(..., description="ID of the entity to merge into primary"),
+):
+    """Merge two entities: keep primary, transfer secondary's edges & beliefs."""
+    success = memory_service.merge_entities(primary_id, secondary_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="One or both entities not found")
+    return {"status": "merged", "primary_id": primary_id}
+
+
+@router.get("/entities/{entity_id}/similar")
+async def get_similar_entities(
+    entity_id: str,
+    top_k: int = Query(10, ge=1, le=50),
+):
+    """Find similar entities based on Jaccard neighborhood similarity."""
+    entity = memory_service.get_entity(entity_id)
+    if not entity:
+        raise HTTPException(status_code=404, detail="Entity not found")
+
+    return graph_service.get_entity_similarity(entity["name"], top_k=top_k)
+
+
+@router.get("/entities/{entity_id}/beliefs")
+async def list_beliefs(
+    entity_id: str,
+    include_superseded: bool = Query(False),
+):
+    """Get beliefs about an entity."""
+    return memory_service.get_entity_beliefs(entity_id, include_superseded=include_superseded)
+
+
+@router.post("/entities/{entity_id}/beliefs")
+async def add_belief_endpoint(
+    entity_id: str,
+    belief: str = Body(...),
+    confidence: float = Body(0.8, ge=0.0, le=1.0),
+):
+    """Add a belief about an entity."""
+    try:
+        belief_id = memory_service.add_belief(entity_id, belief, confidence)
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    return {"status": "created", "belief_id": belief_id}
+
+
+# ---------------------------------------------------------------------------
+# Relationships
+# ---------------------------------------------------------------------------
+
+
+@router.get("/relationships")
+async def list_relationships(
+    entity_id: Optional[str] = Query(None),
+    relationship_type: Optional[str] = Query(None),
+    limit: int = Query(100, ge=1, le=500),
+):
+    """Query relationships with optional entity or type filter."""
+    return memory_service.get_relationships(entity_id=entity_id, relationship_type=relationship_type, limit=limit)
+
+
+@router.delete("/relationships/{edge_id}")
+async def delete_relationship_endpoint(edge_id: str):
+    """Delete a relationship."""
+    success = memory_service.delete_relationship(edge_id)
+    if not success:
+        raise HTTPException(status_code=404, detail="Relationship not found")
+    return {"status": "deleted", "edge_id": edge_id}
+
+
+# ---------------------------------------------------------------------------
+# Full-text memory search
+# ---------------------------------------------------------------------------
+
+
+@router.get("/search")
+async def search_memory_endpoint(
+    q: str = Query(..., min_length=1, description="Search query"),
+    modality: Optional[str] = Query(None),
+    category: Optional[str] = Query(None),
+    limit: int = Query(20, ge=1, le=100),
+):
+    """Full-text search across all chunks."""
+    return memory_service.search_memory(query=q, modality=modality, category=category, limit=limit)
 
 
 @router.get("/timeline", response_model=TimelineResponse)
@@ -100,11 +289,25 @@ async def get_timeline(
         params.extend([page_size, offset])
         rows = conn.execute(query_sql, params).fetchall()
 
+    # Batch-fetch entities for all documents on this page (avoids N+1)
+    doc_ids = [row["id"] for row in rows]
+    entities_by_doc: dict[str, list[str]] = {did: [] for did in doc_ids}
+    if doc_ids:
+        placeholders = ", ".join("?" * len(doc_ids))
+        with get_db() as conn:
+            ent_rows = conn.execute(
+                f"""SELECT DISTINCT c.document_id, n.name
+                    FROM nodes n
+                    JOIN node_chunks nc ON nc.node_id = n.id
+                    JOIN chunks c ON c.id = nc.chunk_id
+                    WHERE c.document_id IN ({placeholders})""",
+                doc_ids,
+            ).fetchall()
+        for er in ent_rows:
+            entities_by_doc[er["document_id"]].append(er["name"])
+
     items = []
     for row in rows:
-        # Get entities for this document
-        entities = _get_document_entities(row["id"])
-
         items.append(
             TimelineItem(
                 id=row["id"],
@@ -114,7 +317,7 @@ async def get_timeline(
                 modality=row["modality"],
                 source_uri=row["source_uri"],
                 ingested_at=row["ingested_at"],
-                entities=entities,
+                entities=entities_by_doc.get(row["id"], []),
             )
         )
 
@@ -222,14 +425,14 @@ async def get_memory_detail(memory_id: str):
 
 
 def _get_document_entities(document_id: str) -> list[str]:
-    """Get entity names associated with a document's chunks."""
+    """Get entity names associated with a document's chunks via junction table."""
     with get_db() as conn:
-        # Single query: join chunks → nodes via delimiter-aware source_chunks match
         rows = conn.execute(
             """SELECT DISTINCT n.name
                FROM nodes n
-               JOIN chunks c ON c.document_id = ?
-               WHERE (',' || n.source_chunks || ',') LIKE '%,' || c.id || ',%'""",
+               JOIN node_chunks nc ON nc.node_id = n.id
+               JOIN chunks c ON c.id = nc.chunk_id
+               WHERE c.document_id = ?""",
             (document_id,),
         ).fetchall()
     return [r["name"] for r in rows]
