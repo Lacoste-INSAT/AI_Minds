@@ -1,54 +1,32 @@
 """
 Intake Orchestrator — connects the event queue to the parsing pipeline.
 
-Responsibilities (per the architecture diagram flow QUEUE → INTAKE):
+Diagram flow:  QUEUE → **INTAKE** → TXT/OCR/AUD → **CLEAN** → chunks
+
+Responsibilities:
   1. Receive a FileEvent from the processing queue.
   2. Route to the correct parser via ingestion.router.
-  3. Normalise the extracted text (whitespace, encoding artefacts).
+  3. Pass raw parser output through the Content Normalizer (CLEAN).
   4. Chunk the normalised text.
-  5. Return structured results ready for downstream storage / enrichment.
+  5. Return structured results ready for downstream enrichment / storage.
 
 For "deleted" events the orchestrator signals downstream to remove the
 file's data — no parsing or chunking happens.
 """
 
 import logging
-import re
-import unicodedata
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
 from ingestion.router import route, UnsupportedFileType, get_parser_name
+from ingestion.parsers.normalizer import normalise as normalise_text
 from ingestion.processor.chunker import chunk_documents
 
 logger = logging.getLogger("synapsis.orchestrator")
 
 
-# ── Normalisation helpers ────────────────────────────────────────────────────
-
-def _normalise_text(raw: str) -> str:
-    """
-    Content normaliser — whitespace, encoding artefacts, Unicode.
-
-    Steps:
-      - Unicode NFC normalisation (combine accented chars)
-      - Replace non-breaking / zero-width spaces with regular space
-      - Collapse runs of whitespace (but preserve paragraph breaks)
-      - Strip leading/trailing whitespace
-    """
-    # Unicode normalisation
-    text = unicodedata.normalize("NFC", raw)
-
-    # Replace exotic whitespace characters with a regular space
-    text = re.sub(r"[\u00a0\u200b\u200c\u200d\ufeff]", " ", text)
-
-    # Collapse multiple blank lines into at most two newlines (paragraph break)
-    text = re.sub(r"\n{3,}", "\n\n", text)
-
-    # Collapse horizontal whitespace within lines
-    text = re.sub(r"[^\S\n]+", " ", text)
-
-    return text.strip()
+# Re-export so existing callers (tests) that imported _normalise_text still work.
+_normalise_text = normalise_text
 
 
 # ── Orchestrator ─────────────────────────────────────────────────────────────
@@ -105,8 +83,8 @@ class IntakeOrchestrator:
             logger.warning("Parser returned empty text for %s — skipping.", filepath)
             return []
 
-        # 2. Normalise
-        clean_text = _normalise_text(raw_text)
+        # 2. Content Normalizer (CLEAN node in diagram)
+        clean_text = normalise_text(raw_text)
         logger.debug(
             "Normalised %s: %d → %d chars",
             filepath, len(raw_text), len(clean_text),

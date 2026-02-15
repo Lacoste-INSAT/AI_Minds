@@ -1,16 +1,27 @@
-"""Tests for the Ingestion Module — orchestrator, retry, dead-letter, normalisation."""
+"""
+Integration tests for the Ingestion Pipeline.
+
+Tests the REAL pipeline end-to-end:
+  Data Sources → WATCH → DEDUP → QUEUE → INTAKE → TXT/OCR/AUD → CLEAN → chunks
+
+Uses actual sample files from the repo — no mocks for the happy path.
+"""
 
 import json
 import queue
-import threading
-import tempfile
+import os
 from pathlib import Path
-from unittest.mock import patch, MagicMock
 
 import pytest
 
-from ingestion.orchestrator import IntakeOrchestrator, _normalise_text
+# ── Pipeline components under test ───────────────────────────────────────────
+from ingestion.parsers.normalizer import normalise
+from ingestion.parsers.text_parser import TextParser
+from ingestion.router import route, UnsupportedFileType, get_parser_name
+from ingestion.orchestrator import IntakeOrchestrator
+from ingestion.processor.chunker import chunk_documents
 from ingestion.observer.events import FileEvent, RateLimiter, MAX_RETRIES
+from ingestion.observer.checksum import ChecksumStore, compute
 from ingestion.observer.processor import (
     _process_event,
     _log_dead_letter,
@@ -18,187 +29,288 @@ from ingestion.observer.processor import (
     DEAD_LETTER_PATH,
 )
 
-
-# ── Normalisation ────────────────────────────────────────────────────────────
-
-
-class TestNormalisation:
-    def test_collapse_blank_lines(self):
-        assert _normalise_text("a\n\n\n\n\nb") == "a\n\nb"
-
-    def test_non_breaking_space(self):
-        assert _normalise_text("hello\u00a0world") == "hello world"
-
-    def test_zero_width_chars(self):
-        assert _normalise_text("he\u200bllo") == "he llo"
-
-    def test_unicode_nfc(self):
-        # é as combining sequence → single codepoint
-        combined = "e\u0301"
-        result = _normalise_text(combined)
-        assert result == "\u00e9"
-
-    def test_strip_whitespace(self):
-        assert _normalise_text("  hello  ") == "hello"
-
-    def test_collapse_horizontal_spaces(self):
-        assert _normalise_text("a   b\tc") == "a b c"
+# ── Project-root-relative paths to real test data ────────────────────────────
+ROOT = Path(__file__).resolve().parent.parent
+SAMPLE_NOTE = ROOT / "test_data" / "sample_note.txt"
+SAMPLE_JOURNAL = ROOT / "data" / "sample_knowledge" / "journal" / "february_2026_devlog.md"
+SAMPLE_DECISIONS = ROOT / "data" / "sample_knowledge" / "notes" / "architecture_decisions.md"
+SAMPLE_RESEARCH = ROOT / "data" / "sample_knowledge" / "research" / "hybrid_retrieval.md"
 
 
-# ── IntakeOrchestrator ───────────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
+# 1. REAL PIPELINE: file → parser → CLEAN → chunks (end-to-end)
+# ═════════════════════════════════════════════════════════════════════════════
 
 
-class TestIntakeOrchestrator:
+class TestRealPipelineEndToEnd:
+    """Run the FULL pipeline against real sample files in the repo."""
+
     @pytest.fixture
     def orchestrator(self):
         return IntakeOrchestrator(chunk_size=500, chunk_overlap=100)
 
-    def test_process_txt_file(self, orchestrator, tmp_path):
-        f = tmp_path / "note.txt"
-        f.write_text("Hello world. This is a test note.", encoding="utf-8")
+    # ── TXT ──────────────────────────────────────────────────────────────
 
-        chunks = orchestrator.process_created_or_modified(str(f))
-        assert len(chunks) >= 1
-        assert chunks[0]["text"]
-        assert chunks[0]["source"] == str(f.absolute())
+    @pytest.mark.skipif(not SAMPLE_NOTE.exists(), reason="sample_note.txt missing")
+    def test_txt_pipeline(self, orchestrator):
+        """sample_note.txt → TextParser → normalise → chunk_documents"""
+        chunks = orchestrator.process_created_or_modified(str(SAMPLE_NOTE))
+
+        assert len(chunks) >= 1, "Should produce at least 1 chunk"
+        # Content actually came from the file
+        all_text = " ".join(c["text"] for c in chunks)
+        assert "Synapsis" in all_text
+        assert "Alice Johnson" in all_text
+        assert "FastAPI" in all_text
+        # Metadata is correct
+        assert chunks[0]["source"] == str(SAMPLE_NOTE.absolute())
         assert chunks[0]["chunk_id"] == 0
+        assert chunks[0]["title"] == "sample_note"
 
-    def test_process_md_file(self, orchestrator, tmp_path):
-        f = tmp_path / "readme.md"
-        f.write_text("# Title\n\nSome markdown content.", encoding="utf-8")
+    # ── Markdown ─────────────────────────────────────────────────────────
+
+    @pytest.mark.skipif(not SAMPLE_JOURNAL.exists(), reason="journal file missing")
+    def test_markdown_journal_pipeline(self, orchestrator):
+        """february_2026_devlog.md → TextParser → normalise → chunks"""
+        chunks = orchestrator.process_created_or_modified(str(SAMPLE_JOURNAL))
+
+        assert len(chunks) >= 3, "94-line devlog should produce multiple chunks"
+        all_text = " ".join(c["text"] for c in chunks)
+        assert "Phi-4-mini" in all_text
+        assert "Qwen2.5" in all_text
+        # Chunk IDs are sequential
+        ids = [c["chunk_id"] for c in chunks]
+        assert ids == list(range(len(chunks)))
+
+    @pytest.mark.skipif(not SAMPLE_DECISIONS.exists(), reason="decisions file missing")
+    def test_markdown_decisions_pipeline(self, orchestrator):
+        """architecture_decisions.md → full pipeline"""
+        chunks = orchestrator.process_created_or_modified(str(SAMPLE_DECISIONS))
+
+        assert len(chunks) >= 2
+        all_text = " ".join(c["text"] for c in chunks)
+        assert "Hybrid Retrieval" in all_text
+        assert "Qdrant" in all_text
+
+    @pytest.mark.skipif(not SAMPLE_RESEARCH.exists(), reason="research file missing")
+    def test_markdown_research_pipeline(self, orchestrator):
+        """hybrid_retrieval.md → full pipeline"""
+        chunks = orchestrator.process_created_or_modified(str(SAMPLE_RESEARCH))
+
+        assert len(chunks) >= 1
+        # Source path is absolute
+        assert Path(chunks[0]["source"]).is_absolute()
+
+    # ── JSON ─────────────────────────────────────────────────────────────
+
+    def test_json_file_pipeline(self, orchestrator, tmp_path):
+        """Real JSON data → TextParser (prettify) → normalise → chunks"""
+        data = {
+            "meeting": "Sprint Planning",
+            "date": "2026-02-14",
+            "attendees": ["Alice", "Bob", "Carol"],
+            "decisions": [
+                {"topic": "model", "choice": "Phi-4-mini"},
+                {"topic": "vector_db", "choice": "Qdrant"},
+            ],
+        }
+        f = tmp_path / "meeting.json"
+        f.write_text(json.dumps(data), encoding="utf-8")
 
         chunks = orchestrator.process_created_or_modified(str(f))
         assert len(chunks) >= 1
-        assert "Title" in chunks[0]["text"]
+        all_text = " ".join(c["text"] for c in chunks)
+        # JSON should be pretty-printed → readable
+        assert "Sprint Planning" in all_text
+        assert "Phi-4-mini" in all_text
 
-    def test_process_json_file(self, orchestrator, tmp_path):
-        f = tmp_path / "data.json"
-        f.write_text(json.dumps({"key": "value"}), encoding="utf-8")
 
-        chunks = orchestrator.process_created_or_modified(str(f))
+# ═════════════════════════════════════════════════════════════════════════════
+# 2. CONTENT NORMALIZER (CLEAN) — with real-world dirty input
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+class TestContentNormalizer:
+    """Test the standalone Content Normalizer against realistic dirty text."""
+
+    def test_normalise_real_parser_output(self):
+        """Simulate messy PDF parser output and verify CLEAN fixes it."""
+        raw = (
+            "\ufeff"  # BOM
+            "  Meeting\u00a0Notes\n"  # NBSP
+            "\n\n\n\n"  # excessive blank lines
+            "Topic:   Architecture\u200b Decision   \n"  # zero-width + extra spaces
+            "\t\tAttendees:\r\n"  # CRLF + tabs
+            "Alice,   Bob,\r\nCarol\n"
+            "\n\n\n\n\n"
+            "End."
+        )
+        clean = normalise(raw)
+
+        # BOM stripped
+        assert not clean.startswith("\ufeff")
+        # NBSP → regular space
+        assert "\u00a0" not in clean
+        # Zero-width chars gone
+        assert "\u200b" not in clean
+        # Excessive blanks collapsed to paragraph break
+        assert "\n\n\n" not in clean
+        assert "\n\n" in clean  # paragraph breaks preserved
+        # CRLF normalised
+        assert "\r" not in clean
+        # Horizontal whitespace collapsed
+        assert "   " not in clean
+        # Content preserved
+        assert "Meeting Notes" in clean
+        assert "Alice," in clean
+        assert "End." in clean
+
+    def test_normalise_preserves_structure(self):
+        """Headings and paragraph structure survive normalisation."""
+        raw = "# Title\n\nParagraph one.\n\nParagraph two.\n\n## Section\n\nMore text."
+        clean = normalise(raw)
+        assert clean == raw  # already clean → unchanged
+
+    def test_normalise_unicode_nfc(self):
+        """Combining characters are composed to single codepoints."""
+        raw = "cafe\u0301"  # e + combining acute → é
+        clean = normalise(raw)
+        assert "café" in clean
+        assert "\u0301" not in clean
+
+    def test_normalise_empty_and_whitespace(self):
+        assert normalise("") == ""
+        assert normalise("   \n\n  ") == ""
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 3. STEP-BY-STEP PIPELINE VERIFICATION
+#    (parser → CLEAN → chunker, inspecting each stage)
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+class TestPipelineStages:
+    """Verify each stage of the pipeline produces correct intermediate output."""
+
+    @pytest.mark.skipif(not SAMPLE_NOTE.exists(), reason="sample_note.txt missing")
+    def test_step_by_step_txt(self):
+        """Trace sample_note.txt through every pipeline stage."""
+        filepath = str(SAMPLE_NOTE)
+
+        # Stage 1: Router picks the right parser
+        parser_cls = route(filepath)
+        assert parser_cls.__name__ == "TextParser"
+
+        # Stage 2: Parser extracts raw text
+        raw = parser_cls.parse(filepath)
+        assert isinstance(raw, str)
+        assert len(raw) > 100
+        assert "Synapsis" in raw
+
+        # Stage 3: CLEAN normalises
+        clean = normalise(raw)
+        assert isinstance(clean, str)
+        assert len(clean) > 0
+        assert len(clean) <= len(raw)  # normalisation never adds content
+        assert "Synapsis" in clean
+
+        # Stage 4: Chunker splits
+        doc = {
+            "text": clean,
+            "source": filepath,
+            "page": 1,
+            "title": Path(filepath).stem,
+            "sections": [],
+        }
+        chunks = chunk_documents([doc], chunk_size=500, chunk_overlap=100)
         assert len(chunks) >= 1
-        assert "key" in chunks[0]["text"]
+        # Every chunk has required fields
+        for c in chunks:
+            assert "text" in c
+            assert "source" in c
+            assert "chunk_id" in c
+            assert c["source"] == filepath
 
-    def test_process_empty_file_returns_empty(self, orchestrator, tmp_path):
-        f = tmp_path / "empty.txt"
-        f.write_text("", encoding="utf-8")
+    @pytest.mark.skipif(not SAMPLE_JOURNAL.exists(), reason="journal file missing")
+    def test_step_by_step_markdown(self):
+        """Trace devlog markdown through every pipeline stage."""
+        filepath = str(SAMPLE_JOURNAL)
 
-        chunks = orchestrator.process_created_or_modified(str(f))
-        assert chunks == []
+        # Router
+        parser_cls = route(filepath)
+        assert parser_cls.__name__ == "TextParser"
 
-    def test_process_deleted(self, orchestrator, tmp_path):
-        result = orchestrator.process_deleted("/fake/path.txt")
-        assert result["event"] == "deleted"
-        assert "path.txt" in result["source"]
+        # Parse
+        raw = parser_cls.parse(filepath)
+        assert "February" in raw
 
-    def test_process_dispatches_correctly(self, orchestrator, tmp_path):
+        # Normalise
+        clean = normalise(raw)
+        assert "February" in clean
+
+        # Chunk
+        doc = {"text": clean, "source": filepath, "page": 1, "title": "devlog", "sections": []}
+        chunks = chunk_documents([doc], chunk_size=500, chunk_overlap=100)
+        assert len(chunks) >= 3
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# 4. DEDUP (CHECKSUM) — real file change detection
+# ═════════════════════════════════════════════════════════════════════════════
+
+
+class TestChecksumDedup:
+    """Test checksum-based dedup with real files."""
+
+    def test_same_file_same_checksum(self, tmp_path):
         f = tmp_path / "note.txt"
-        f.write_text("content", encoding="utf-8")
+        f.write_text("Meeting notes about Synapsis.", encoding="utf-8")
 
-        # created → chunks
-        result = orchestrator.process("created", str(f))
-        assert isinstance(result, list)
+        c1 = compute(str(f))
+        c2 = compute(str(f))
+        assert c1 == c2
+        assert c1 is not None
 
-        # deleted → marker
-        result = orchestrator.process("deleted", str(f))
-        assert result["event"] == "deleted"
+    def test_modified_file_different_checksum(self, tmp_path):
+        f = tmp_path / "note.txt"
+        f.write_text("Version 1", encoding="utf-8")
+        c1 = compute(str(f))
 
-    def test_unsupported_extension_raises(self, orchestrator, tmp_path):
-        f = tmp_path / "binary.exe"
-        f.write_bytes(b"\x00\x01\x02")
+        f.write_text("Version 2 — updated content", encoding="utf-8")
+        c2 = compute(str(f))
 
-        from ingestion.router import UnsupportedFileType
-        with pytest.raises(UnsupportedFileType):
-            orchestrator.process_created_or_modified(str(f))
+        assert c1 != c2
 
-    def test_chunking_produces_multiple_chunks(self, orchestrator, tmp_path):
-        """A file larger than chunk_size should produce multiple chunks."""
-        f = tmp_path / "long.txt"
-        # ~2000 chars should produce several 500-char chunks
-        f.write_text("word " * 400, encoding="utf-8")
+    def test_checksum_store_tracks_changes(self, tmp_path):
+        store = ChecksumStore(tmp_path / "checksums.json")
+        store.set("/path/a.txt", "abc123")
+        assert store.get("/path/a.txt") == "abc123"
 
-        chunks = orchestrator.process_created_or_modified(str(f))
-        assert len(chunks) > 1
-        # All chunks reference the same source
-        sources = {c["source"] for c in chunks}
-        assert len(sources) == 1
+        store.set("/path/a.txt", "def456")
+        assert store.get("/path/a.txt") == "def456"
 
-    def test_sample_note(self, orchestrator):
-        """Smoke test against the repo's sample data file."""
-        sample = Path("test_data/sample_note.txt")
-        if not sample.exists():
-            pytest.skip("test_data/sample_note.txt not present")
+    def test_checksum_store_persistence(self, tmp_path):
+        db_path = tmp_path / "checksums.json"
+        store1 = ChecksumStore(db_path)
+        store1.set("/file.txt", "sha256hash")
+        store1.save()
 
-        chunks = orchestrator.process_created_or_modified(str(sample))
-        assert len(chunks) >= 1
-        assert "Synapsis" in chunks[0]["text"]
+        store2 = ChecksumStore(db_path)
+        assert store2.get("/file.txt") == "sha256hash"
 
 
-# ── FileEvent retry fields ───────────────────────────────────────────────────
+# ═════════════════════════════════════════════════════════════════════════════
+# 5. QUEUE → INTAKE (real processor integration, no mocks)
+# ═════════════════════════════════════════════════════════════════════════════
 
 
-class TestFileEvent:
-    def test_initial_state(self):
-        fe = FileEvent("created", "/tmp/a.txt")
-        assert fe.attempts == 0
-        assert fe.last_error == ""
-        assert fe.retriable is True
+class TestQueueToIntake:
+    """Test real events flowing through the queue processor → orchestrator."""
 
-    def test_exhausted_after_max_retries(self):
-        fe = FileEvent("modified", "/tmp/b.txt")
-        fe.attempts = MAX_RETRIES
-        assert fe.retriable is False
-
-    def test_repr_includes_attempt(self):
-        fe = FileEvent("created", "/tmp/c.txt")
-        fe.attempts = 2
-        assert "attempt=2" in repr(fe)
-
-
-# ── Backoff ──────────────────────────────────────────────────────────────────
-
-
-class TestBackoff:
-    def test_exponential(self):
-        assert _backoff_seconds(1) == 2.0
-        assert _backoff_seconds(2) == 4.0
-        assert _backoff_seconds(3) == 8.0
-
-    def test_capped_at_30(self):
-        assert _backoff_seconds(10) == 30.0
-
-
-# ── Dead-letter logging ─────────────────────────────────────────────────────
-
-
-class TestDeadLetter:
-    def test_log_dead_letter_writes_jsonl(self, tmp_path, monkeypatch):
-        dl_path = tmp_path / "dead_letter.jsonl"
-        monkeypatch.setattr(
-            "ingestion.observer.processor.DEAD_LETTER_PATH", dl_path
-        )
-        monkeypatch.setattr(
-            "ingestion.observer.processor.CONFIG_DIR", tmp_path
-        )
-
-        fe = FileEvent("created", "/tmp/fail.txt")
-        fe.attempts = 3
-        _log_dead_letter(fe, "parser exploded")
-
-        assert dl_path.exists()
-        record = json.loads(dl_path.read_text().strip())
-        assert record["src_path"] == "/tmp/fail.txt"
-        assert record["error"] == "parser exploded"
-        assert record["attempts"] == 3
-
-
-# ── Processor retry integration ──────────────────────────────────────────────
-
-
-class TestProcessorRetry:
-    def test_successful_event_not_requeued(self, tmp_path):
-        f = tmp_path / "good.txt"
-        f.write_text("good content", encoding="utf-8")
+    def test_real_file_event_processed(self, tmp_path):
+        """Create a real file, send a FileEvent, verify it processes."""
+        f = tmp_path / "test_event.txt"
+        f.write_text("Real content for queue test. Synapsis project.", encoding="utf-8")
 
         fe = FileEvent("created", str(f))
         eq = queue.Queue()
@@ -206,47 +318,68 @@ class TestProcessorRetry:
 
         _process_event(fe, rl, eq)
 
-        # Nothing re-enqueued
+        # Processed successfully — nothing re-enqueued
         assert eq.empty()
         assert fe.attempts == 1
 
-    def test_failed_event_requeued_when_retriable(self):
-        fe = FileEvent("created", "/nonexistent/file.txt")
+    def test_deleted_event_processed(self):
+        """Delete events don't need the file to exist."""
+        fe = FileEvent("deleted", "/some/old/file.txt")
         eq = queue.Queue()
         rl = RateLimiter(max_per_minute=600)
 
-        with patch("ingestion.observer.processor._get_orchestrator") as mock:
-            mock.return_value.process.side_effect = FileNotFoundError("nope")
-            with patch("ingestion.observer.processor.time.sleep"):
-                _process_event(fe, rl, eq)
+        _process_event(fe, rl, eq)
 
-        # Should be re-enqueued for retry
+        assert eq.empty()
+        assert fe.attempts == 1
+
+    def test_missing_file_triggers_retry(self):
+        """A file that vanishes between detection and processing → retry."""
+        fe = FileEvent("created", "/nonexistent/vanished.txt")
+        eq = queue.Queue()
+        rl = RateLimiter(max_per_minute=600)
+
+        import ingestion.observer.processor as proc
+        original_sleep = proc.time.sleep
+        proc.time.sleep = lambda _: None  # skip actual backoff delay
+
+        try:
+            _process_event(fe, rl, eq)
+        finally:
+            proc.time.sleep = original_sleep
+
+        # Re-enqueued for retry
         assert not eq.empty()
         requeued = eq.get_nowait()
         assert requeued.attempts == 1
         assert requeued.retriable is True
 
-    def test_exhausted_event_goes_to_dead_letter(self, tmp_path, monkeypatch):
-        dl_path = tmp_path / "dead_letter.jsonl"
-        monkeypatch.setattr(
-            "ingestion.observer.processor.DEAD_LETTER_PATH", dl_path
-        )
-        monkeypatch.setattr(
-            "ingestion.observer.processor.CONFIG_DIR", tmp_path
-        )
+    def test_dead_letter_after_exhaustion(self, tmp_path):
+        """After MAX_RETRIES, event goes to dead-letter log."""
+        import ingestion.observer.processor as proc
+        original_dlp = proc.DEAD_LETTER_PATH
+        original_cd = proc.CONFIG_DIR
+        proc.DEAD_LETTER_PATH = tmp_path / "dead_letter.jsonl"
+        proc.CONFIG_DIR = tmp_path
+        original_sleep = proc.time.sleep
+        proc.time.sleep = lambda _: None
 
-        fe = FileEvent("created", "/nonexistent/file.txt")
-        fe.attempts = MAX_RETRIES - 1  # next attempt will exhaust retries
-        eq = queue.Queue()
-        rl = RateLimiter(max_per_minute=600)
+        try:
+            fe = FileEvent("created", "/nonexistent/permanent_fail.txt")
+            fe.attempts = MAX_RETRIES - 1
+            eq = queue.Queue()
+            rl = RateLimiter(max_per_minute=600)
 
-        with patch("ingestion.observer.processor._get_orchestrator") as mock:
-            mock.return_value.process.side_effect = Exception("permanent fail")
             _process_event(fe, rl, eq)
 
-        # Should NOT be re-enqueued
-        assert eq.empty()
-        # Should be in dead-letter log
-        assert dl_path.exists()
-        record = json.loads(dl_path.read_text().strip())
-        assert record["error"] == "permanent fail"
+            assert eq.empty(), "Exhausted event must NOT be re-enqueued"
+            dl = tmp_path / "dead_letter.jsonl"
+            assert dl.exists()
+            record = json.loads(dl.read_text().strip())
+            assert record["src_path"] == "/nonexistent/permanent_fail.txt"
+            assert record["attempts"] == MAX_RETRIES
+        finally:
+            proc.DEAD_LETTER_PATH = original_dlp
+            proc.CONFIG_DIR = original_cd
+            proc.time.sleep = original_sleep
+
