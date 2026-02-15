@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "RowboatX",
-  description: "RowboatX interface",
+  title: "Synapsis",
+  description: "Your personal, air-gapped knowledge engine",
 };
 
 export default function RootLayout({

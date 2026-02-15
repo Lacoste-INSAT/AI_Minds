@@ -61,7 +61,7 @@ start_docker() {
     mkdir -p data/qdrant data/uploads
     
     # Start services
-    docker-compose -f docker-compose.integrated.yml up -d
+    docker-compose up -d
     
     print_status "Starting Qdrant on :6333"
     print_status "Starting Ollama on :11434"
@@ -111,11 +111,10 @@ start_docker() {
     echo "  Qdrant:         http://localhost:6333"
     echo ""
     echo "Next steps:"
-    echo "  1. Run setup: python setup_integration.py"
-    echo "  2. Start Rowboat: cd ../rowboat/apps/x && npm run dev"
+    echo "  1. Start frontend: cd frontend/synapsis && npm run dev"
     echo ""
-    echo "To stop: docker-compose -f docker-compose.integrated.yml down"
-    echo "Logs:    docker-compose -f docker-compose.integrated.yml logs -f"
+    echo "To stop: docker-compose down"
+    echo "Logs:    docker-compose logs -f"
 }
 
 # Start without Docker (development mode)

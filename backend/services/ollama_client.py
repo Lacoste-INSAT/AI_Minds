@@ -227,15 +227,19 @@ class OllamaClient:
             payload["system"] = system
 
         try:
+            logger.info("ollama.stream_starting", model=model, prompt=prompt[:30])
             async with client.stream("POST", "/api/generate", json=payload) as resp:
+                logger.info("ollama.stream_response_received", status=resp.status_code)
                 async for line in resp.aiter_lines():
                     if line:
                         try:
                             data = json.loads(line)
                             token = data.get("response", "")
                             if token:
+                                logger.debug("ollama.stream_token", token=token[:10] if len(token) > 10 else token)
                                 yield token
                             if data.get("done", False):
+                                logger.info("ollama.stream_complete")
                                 break
                         except json.JSONDecodeError:
                             continue

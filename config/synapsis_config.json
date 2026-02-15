@@ -1,0 +1,14 @@
+{
+  "watched_directories": [
+    "C:\\Users\\User/Documents"
+  ],
+  "exclude_patterns": [
+    "node_modules/**",
+    ".git/**",
+    "*.exe",
+    "*.dll"
+  ],
+  "max_file_size_mb": 50,
+  "scan_interval_seconds": 30,
+  "rate_limit_files_per_minute": 10
+}

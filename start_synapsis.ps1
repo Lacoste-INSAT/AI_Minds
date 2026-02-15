@@ -54,7 +54,7 @@ function Start-Docker {
     New-Item -ItemType Directory -Force -Path "data/uploads" | Out-Null
     
     # Start services
-    docker-compose -f docker-compose.integrated.yml up -d
+    docker-compose up -d
     
     Write-Success "Starting Qdrant on :6333"
     Write-Success "Starting Ollama on :11434"
@@ -95,10 +95,9 @@ function Start-Docker {
     Write-Host "  Qdrant:         http://localhost:6333"
     Write-Host ""
     Write-Host "Next steps:"
-    Write-Host "  1. Run setup: python setup_integration.py"
-    Write-Host "  2. Start Rowboat: cd ..\rowboat\apps\x; npm run dev"
+    Write-Host "  1. Start frontend: cd frontend\synapsis; npm run dev"
     Write-Host ""
-    Write-Host "To stop: docker-compose -f docker-compose.integrated.yml down"
+    Write-Host "To stop: docker-compose down"
 }
 
 function Start-Local {
@@ -149,7 +148,7 @@ function Start-Local {
 
 function Stop-Services {
     Write-Header "Stopping Synapsis Stack"
-    docker-compose -f docker-compose.integrated.yml down
+    docker-compose down
     Write-Success "Services stopped"
 }
 

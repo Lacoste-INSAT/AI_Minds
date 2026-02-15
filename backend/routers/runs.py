@@ -88,12 +88,16 @@ class AgentConfig(BaseModel):
 async def broadcast_event(run_id: str, event: dict):
     """Send an event to all listeners of a run."""
     event["runId"] = run_id
-    if run_id in _event_queues:
-        await _event_queues[run_id].put(event)
+    # Create queue if it doesn't exist
+    if run_id not in _event_queues:
+        _event_queues[run_id] = asyncio.Queue()
+    await _event_queues[run_id].put(event)
+    logger.debug("sse.event_queued", run_id=run_id, event_type=event.get("type"))
 
 
 async def process_message_with_streaming(run_id: str, user_message: str):
     """Process a user message and stream the response."""
+    logger.info("runs.processing_message", run_id=run_id, message=user_message[:50])
     try:
         # Broadcast start
         await broadcast_event(run_id, {
@@ -128,6 +132,7 @@ async def process_message_with_streaming(run_id: str, user_message: str):
             system_prompt += f"\n\nRelevant context from user's documents:\n{context}\n\nUse this context to inform your answer when relevant."
 
         # Stream LLM response
+        logger.info("runs.starting_llm_stream", run_id=run_id)
         full_response = ""
         message_id = f"msg-{uuid.uuid4().hex[:12]}"
 
@@ -254,17 +259,21 @@ async def event_stream(request: Request):
             if await request.is_disconnected():
                 break
             
-            # Check all run queues for events
+            # Check all run queues for events and drain them
+            has_events = False
             for run_id, queue in list(_event_queues.items()):
-                try:
-                    # Non-blocking check
-                    event = queue.get_nowait()
-                    yield f"data: {json.dumps(event)}\n\n"
-                except asyncio.QueueEmpty:
-                    pass
+                # Drain all events from this queue
+                while not queue.empty():
+                    try:
+                        event = queue.get_nowait()
+                        yield f"data: {json.dumps(event)}\n\n"
+                        has_events = True
+                    except asyncio.QueueEmpty:
+                        break
             
             # Small delay to prevent CPU spinning
-            await asyncio.sleep(0.05)
+            if not has_events:
+                await asyncio.sleep(0.05)
     
     return StreamingResponse(
         generate(),
@@ -324,76 +333,9 @@ async def list_agents():
     }
 
 
-# ---------------------------------------------------------------------------
-# Rowboat compatibility endpoints
-# ---------------------------------------------------------------------------
-
-
-@router.get("/rowboat/summary")
-async def rowboat_summary():
-    """Rowboat API compatibility - return summary of resources."""
+@router.get("/runs")
+async def list_runs():
+    """List recent chat runs."""
     return {
-        "agents": ["copilot"],
-        "configs": [],
         "runs": list(_runs.keys())[-10:] if _runs else [],
-    }
-
-
-@router.get("/rowboat/run")
-async def get_rowboat_run(file: str):
-    """Rowboat API - get run details by file/id."""
-    run_id = file  # The query param 'file' contains the run ID
-    
-    if run_id not in _runs:
-        # Return empty run structure for non-existent runs
-        return {
-            "id": run_id,
-            "agentId": "copilot",
-            "messages": [],
-            "status": "not_found",
-            "createdAt": 0,
-        }
-    
-    return _runs[run_id]
-
-
-@router.get("/rowboat/agent")
-async def get_rowboat_agent(file: str):
-    """Rowboat API - get agent details by file/id."""
-    agent_id = file
-    
-    # Default agent configurations 
-    agents = {
-        "copilot": {
-            "id": "copilot",
-            "name": "Synapsis Copilot",
-            "description": "AI assistant with access to your personal knowledge base",
-            "systemPrompt": "You are Synapsis, a helpful AI assistant.",
-            "model": "qwen2.5:0.5b",
-        },
-    }
-    
-    if agent_id in agents:
-        return agents[agent_id]
-    
-    # Return basic agent structure for any agent ID
-    return {
-        "id": agent_id,
-        "name": agent_id.replace("-", " ").title(),
-        "description": "An AI assistant",
-        "systemPrompt": "You are a helpful AI assistant.",
-        "model": "qwen2.5:0.5b",
-    }
-
-
-@router.get("/rowboat/config")
-async def get_rowboat_config(file: str):
-    """Rowboat API - get config details by file/id."""
-    config_id = file
-    
-    # Return default config
-    return {
-        "id": config_id,
-        "name": config_id,
-        "settings": {},
     }

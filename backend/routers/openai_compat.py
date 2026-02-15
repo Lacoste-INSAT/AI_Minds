@@ -1,7 +1,7 @@
 """
 Synapsis Backend — OpenAI-Compatible API
 =========================================
-Provides OpenAI API compatibility so rowboat (and other tools)
+Provides OpenAI API compatibility so external tools
 can use our local LLM with RAG pipeline instead of cloud APIs.
 
 Endpoints:
