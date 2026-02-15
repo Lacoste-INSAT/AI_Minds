@@ -1,0 +1,53 @@
+###############################################################################
+# Synapsis — Docker Compose
+# Qdrant vector store + Backend API
+###############################################################################
+
+services:
+  # ---------------------------------------------------------------------------
+  # Qdrant — Vector Search Engine
+  # ---------------------------------------------------------------------------
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: synapsis-qdrant
+    restart: unless-stopped
+    ports:
+      - "6333:6333"   # REST API
+      - "6334:6334"   # gRPC
+    volumes:
+      - qdrant_data:/qdrant/storage
+    environment:
+      - QDRANT__SERVICE__GRPC_PORT=6334
+      - QDRANT__LOG_LEVEL=INFO
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Synapsis Backend (optional — can also run outside Docker)
+  # ---------------------------------------------------------------------------
+  # backend:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: synapsis-backend
+  #   restart: unless-stopped
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - ./data:/app/data
+  #     - ./config:/app/config
+  #   environment:
+  #     - SYNAPSIS_QDRANT_HOST=qdrant
+  #     - SYNAPSIS_QDRANT_PORT=6333
+  #     - SYNAPSIS_OLLAMA_BASE_URL=http://host.docker.internal:11434
+  #   depends_on:
+  #     qdrant:
+  #       condition: service_healthy
+
+volumes:
+  qdrant_data:
+    driver: local
