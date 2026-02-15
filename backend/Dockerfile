@@ -10,17 +10,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
-# Python deps
-COPY requirements.txt .
+# Python deps (context is project root, requirements is in backend/)
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-# spacy is commented out in requirements.txt; skip download until enabled
-# RUN python -m spacy download en_core_web_sm
 
-# App code
-COPY . .
+# App code — backend package
+COPY backend/ ./backend/
 
-# Create data directory
-RUN mkdir -p /app/data
+# Ingestion observer package — needed by backend.services.ingestion
+COPY ingestion/ ./ingestion/
+
+# Agents package (prompts, etc.)
+COPY agents/ ./agents/
+
+# Create directories
+RUN mkdir -p /app/data /app/config /app/watched
 
 # Expose port (localhost only binding is done in docker-compose)
 EXPOSE 8000

@@ -26,14 +26,14 @@ networkx>=3.4
 # === NLP / NER ===
 spacy>=3.8
 
-# === Document Parsing (Person 3) ===
-# pymupdf>=1.25
-# python-docx>=1.1
-# Pillow>=11.0
-# pytesseract>=0.3
+# === Document Parsing ===
+pymupdf>=1.25
+python-docx>=1.1
+Pillow>=11.0
+pytesseract>=0.3
 
-# === Audio Transcription (Person 3) ===
-# faster-whisper>=1.1
+# === Audio Transcription ===
+faster-whisper>=1.1
 
 # === File Watching ===
 watchdog>=6.0

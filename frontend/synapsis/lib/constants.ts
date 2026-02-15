@@ -46,10 +46,10 @@ export const NAV_ITEMS: NavItem[] = [
     description: "Find specific knowledge",
   },
   {
-    title: "Setup",
-    href: "/setup",
+    title: "Settings",
+    href: "/settings",
     icon: "Settings",
-    description: "Configure knowledge sources",
+    description: "Manage knowledge sources & watcher",
   },
 ];
 
