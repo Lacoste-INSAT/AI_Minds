@@ -87,6 +87,7 @@ function KnowledgeCardInner({ item, onSelect, className }: KnowledgeCardProps) {
             <span aria-hidden>·</span>
             <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
               {item.category ?? "Uncategorized"}
+
             </Badge>
           </div>
         </div>
@@ -117,6 +118,7 @@ function KnowledgeCardInner({ item, onSelect, className }: KnowledgeCardProps) {
         {/* Summary */}
         <p className="line-clamp-2 text-sm text-muted-foreground">
           {item.summary ?? "No summary available"}
+
         </p>
 
         {/* Entity chips */}

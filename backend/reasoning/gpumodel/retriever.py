@@ -430,13 +430,12 @@ class HybridRetriever:
     Orchestrates all three retrieval paths.
     
     Usage:
-        retriever = HybridRetriever(qdrant_client, bm25_docs, graph)
-        results = await retriever.search(
+        retriever = HybridRetriever(qdrant_client)
+        results = await retriever.retrieve(
             query="What did Sarah say about the budget?",
+            query_type=QueryType.MULTI_HOP,
             entities=["Sarah", "budget"],
-            dense_k=5,
-            sparse_k=3,
-            graph_hops=2
+            top_k=10
         )
     """
     
@@ -445,15 +444,22 @@ class HybridRetriever:
         qdrant_client=None,
         documents: Optional[list[dict]] = None,
         graph=None,
+        sqlite_path: Optional[str] = None,
         collection_name: str = "chunks",
     ):
+        self.qdrant_client = qdrant_client
         self.dense = DenseRetriever(qdrant_client, collection_name) if qdrant_client else None
         self.sparse = SparseRetriever(documents) if documents else SparseRetriever()
         self.graph = GraphRetriever(graph)
+        self.sqlite_path = sqlite_path
         
         # Index BM25 if documents provided
         if documents:
             self.sparse.index(documents)
+        
+        # Load graph from SQLite if path provided
+        if sqlite_path and not graph:
+            self.graph.load_graph_from_sqlite(sqlite_path)
     
     def update_bm25_index(self, documents: list[dict]):
         """Update BM25 index with new documents."""
@@ -530,3 +536,139 @@ class HybridRetriever:
             graph_results=graph_results,
             query=query,
         )
+
+    async def retrieve(
+        self,
+        query: str,
+        query_type,  # QueryType enum
+        entities: Optional[list[str]] = None,
+        top_k: int = 10,
+    ) -> RetrievalBundle:
+        """
+        Main retrieval entry point used by ReasoningEngine.
+        Maps query_type to appropriate retrieval strategy.
+        
+        Args:
+            query: User's question
+            query_type: QueryType enum (SIMPLE, MULTI_HOP, TEMPORAL, etc.)
+            entities: Extracted entity names
+            top_k: Total number of results desired
+            
+        Returns:
+            RetrievalBundle with results from applicable paths
+        """
+        # Import QueryType here to avoid circular imports
+        from .query_planner import QueryType
+        
+        # Map query type to retrieval strategy
+        if query_type == QueryType.SIMPLE:
+            # Simple queries: Dense + Sparse, no graph
+            return await self.search(
+                query=query,
+                entities=entities,
+                dense_k=max(top_k // 2, 5),
+                sparse_k=max(top_k // 3, 3),
+                graph_hops=0,
+            )
+        
+        elif query_type == QueryType.MULTI_HOP:
+            # Multi-hop: All three paths, emphasize graph
+            return await self.search(
+                query=query,
+                entities=entities,
+                dense_k=max(top_k // 3, 3),
+                sparse_k=max(top_k // 4, 2),
+                graph_hops=3,  # Enable graph traversal
+            )
+        
+        elif query_type == QueryType.TEMPORAL:
+            # Temporal: Dense + Sparse with time weighting (handled in fusion)
+            return await self.search(
+                query=query,
+                entities=entities,
+                dense_k=max(top_k // 2, 5),
+                sparse_k=max(top_k // 3, 3),
+                graph_hops=0,
+            )
+        
+        elif query_type == QueryType.CONTRADICTION:
+            # Contradiction: Need broad retrieval + graph for entity connections
+            return await self.search(
+                query=query,
+                entities=entities,
+                dense_k=max(top_k // 2, 5),
+                sparse_k=max(top_k // 3, 3),
+                graph_hops=2,
+            )
+        
+        elif query_type == QueryType.AGGREGATION:
+            # Aggregation: More results needed for complete picture
+            return await self.search(
+                query=query,
+                entities=entities,
+                dense_k=top_k,
+                sparse_k=top_k // 2,
+                graph_hops=1 if entities else 0,
+            )
+        
+        else:
+            # Default fallback: Dense + sparse
+            return await self.search(
+                query=query,
+                entities=entities,
+                dense_k=max(top_k // 2, 5),
+                sparse_k=max(top_k // 3, 3),
+                graph_hops=0,
+            )
+
+    async def sync_bm25_from_qdrant(self, limit: int = 10000) -> int:
+        """
+        Sync documents from Qdrant to BM25 index.
+        Call this on startup to enable sparse retrieval.
+        
+        Returns:
+            Number of documents indexed
+        """
+        if not self.qdrant_client:
+            logger.warning("Cannot sync BM25: no Qdrant client")
+            return 0
+        
+        try:
+            from qdrant_client.models import ScrollRequest
+            
+            documents = []
+            offset = None
+            
+            while True:
+                # Scroll through all documents
+                results = self.qdrant_client.scroll(
+                    collection_name=self.dense.collection_name if self.dense else "chunks",
+                    limit=500,
+                    offset=offset,
+                    with_payload=True,
+                )
+                
+                points, next_offset = results
+                
+                for point in points:
+                    payload = point.payload or {}
+                    documents.append({
+                        "id": str(point.id),
+                        "content": payload.get("content", ""),
+                        "source_file": payload.get("source_file", ""),
+                        "created_at": payload.get("created_at"),
+                    })
+                
+                if next_offset is None or len(documents) >= limit:
+                    break
+                offset = next_offset
+            
+            if documents:
+                self.sparse.index(documents)
+                logger.info("bm25_synced_from_qdrant", doc_count=len(documents))
+            
+            return len(documents)
+            
+        except Exception as e:
+            logger.error("bm25_sync_failed", error=str(e))
+            return 0

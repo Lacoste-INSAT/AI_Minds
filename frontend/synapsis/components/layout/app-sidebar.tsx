@@ -35,6 +35,7 @@ import {
   Settings,
   Brain,
   FolderCog,
+
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "@/lib/constants";
@@ -49,6 +50,7 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Search,
   Settings,
   FolderCog,
+
 };
 
 export function AppSidebar() {

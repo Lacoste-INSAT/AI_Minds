@@ -8,6 +8,8 @@ Endpoints:
 - POST /query/ask    → Full reasoning pipeline
 - GET  /query/health → Health check for reasoning services
 
+Supports both GPU (phi4-mini) and CPU (qwen2.5:0.5b) modes.
+
 Usage:
     from backend.reasoning.api import router
     app.include_router(router, prefix="/query", tags=["reasoning"])
@@ -15,18 +17,31 @@ Usage:
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, Literal
+from enum import Enum
 import logging
 import time
 
+# Import both model implementations
 from backend.reasoning.cpumodel.models import (
-    ModelTier,
-    ConfidenceLevel,
+    ModelTier as CPUModelTier,
+    ConfidenceLevel as CPUConfidenceLevel,
     VerificationVerdict,
-    AnswerPacket,
+    AnswerPacket as CPUAnswerPacket,
 )
-from backend.reasoning.cpumodel.engine import process_query
+from backend.reasoning.cpumodel.engine import process_query as cpu_process_query
 from backend.reasoning.cpumodel.ollama_client import get_ollama_client, DEFAULT_TIER
+
+from backend.reasoning.gpumodel.engine import process_query as gpu_process_query
+from backend.reasoning.gpumodel.ollama_client import ModelTier as GPUModelTier
+from backend.reasoning.gpumodel.confidence import ConfidenceLevel as GPUConfidenceLevel
+from backend.reasoning.gpumodel.critic import CriticVerdict
+
+
+class ExecutionMode(str, Enum):
+    """Execution mode for the reasoning engine."""
+    GPU = "gpu"  # phi4-mini (T1) → best quality, requires GPU/fast CPU
+    CPU = "cpu"  # qwen2.5:0.5b (T3) → lightweight, runs on any CPU
 
 logger = logging.getLogger(__name__)
 
@@ -41,7 +56,8 @@ class QueryRequest(BaseModel):
     Example:
         {
             "query": "What did John say about the project deadline?",
-            "tier": "T3"
+            "mode": "gpu",
+            "tier": "T1"
         }
     """
     query: str = Field(
@@ -51,10 +67,15 @@ class QueryRequest(BaseModel):
         description="The user's question (1-4000 chars)",
         json_schema_extra={"example": "What is the project deadline?"}
     )
+    mode: Optional[str] = Field(
+        default="gpu",
+        description="Execution mode: 'gpu' (phi4-mini, best quality) or 'cpu' (qwen2.5:0.5b, lightweight)",
+        json_schema_extra={"example": "gpu"}
+    )
     tier: Optional[str] = Field(
         default=None,
-        description="Model tier: T1 (phi4-mini), T2 (qwen2.5:3b), T3 (qwen2.5:0.5b). Default: T3",
-        json_schema_extra={"example": "T3"}
+        description="Model tier: T1 (phi4-mini), T2 (qwen2.5:3b), T3 (qwen2.5:0.5b). Default: T1 for GPU, T3 for CPU",
+        json_schema_extra={"example": "T1"}
     )
 
 
@@ -75,12 +96,15 @@ class QueryResponse(BaseModel):
     """
     answer: str = Field(description="The generated answer (or abstention message)")
     confidence: str = Field(description="Confidence level: high, medium, low, none")
+    confidence_score: float = Field(description="Raw confidence score (0-1)")
     verification: str = Field(description="Critic verdict: APPROVE, REVISE, REJECT")
     sources: list[SourceInfo] = Field(
         default_factory=list,
         description="Evidence chunks used (may be empty on abstention)"
     )
+    query_type: str = Field(description="Query classification: SIMPLE, MULTI_HOP, TEMPORAL, etc.")
     model_used: str = Field(description="Which model tier was used: T1, T2, T3")
+    mode: str = Field(description="Execution mode: gpu or cpu")
     latency_ms: float = Field(description="Total processing time in milliseconds")
     reasoning_chain: Optional[str] = Field(
         default=None,
@@ -118,54 +142,97 @@ async def ask_question(request: QueryRequest) -> QueryResponse:
     """
     Process a user question through the full reasoning pipeline.
     
-    Pipeline steps:
-    1. Query classification (SIMPLE, MULTI_HOP, TEMPORAL, CONTRADICTION)
-    2. Hybrid retrieval (dense + sparse + graph)
-    3. RRF fusion with deduplication
-    4. LLM answer synthesis
-    5. Critic verification
-    6. Confidence scoring
+    Pipeline steps (6 components from diagram):
+    1. Intent Detector - Query classification (SIMPLE, MULTI_HOP, TEMPORAL, etc.)
+    2. Hybrid Retriever - Dense + Sparse + Graph retrieval
+    3. Context Assembler - RRF fusion with deduplication
+    4. LLM Reasoner - Generate grounded answer (Phi-4-mini / TinyLlama)
+    5. Self Verification - Critic agent validates against sources
+    6. Confidence Scorer - Calculate confidence and uncertainty
     
     Returns abstention if evidence is insufficient.
     """
     start_time = time.perf_counter()
     
-    # Parse tier
-    tier = DEFAULT_TIER
-    if request.tier:
-        tier_map = {"T1": ModelTier.T1, "T2": ModelTier.T2, "T3": ModelTier.T3}
-        tier = tier_map.get(request.tier.upper(), DEFAULT_TIER)
+    # Determine execution mode
+    mode = (request.mode or "gpu").lower()
+    use_gpu = mode != "cpu"
     
     try:
-        # Process query through full pipeline
-        result: AnswerPacket = await process_query(
-            query=request.query,
-            tier=tier,
-        )
+        if use_gpu:
+            # GPU mode - use phi4-mini (T1) as default
+            tier_map = {"T1": GPUModelTier.T1, "T2": GPUModelTier.T2, "T3": GPUModelTier.T3}
+            tier = tier_map.get(request.tier.upper(), GPUModelTier.T1) if request.tier else GPUModelTier.T1
+            
+            result = await gpu_process_query(
+                query=request.query,
+                tier=tier,
+                top_k=15,  # GPU allows higher top_k
+            )
+            
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            
+            # Map GPU sources to response format
+            sources = []
+            if result.sources:
+                for src in result.sources:
+                    sources.append(SourceInfo(
+                        chunk_id=src.chunk_id,
+                        file_name=src.source_file.split("/")[-1].split("\\")[-1],
+                        snippet=src.content[:500],  # Truncate for response
+                        score=src.fused_score,
+                        page_number=src.metadata.get("page_number"),
+                    ))
+            
+            return QueryResponse(
+                answer=result.answer,
+                confidence=result.confidence.value if result.confidence else "none",
+                confidence_score=result.confidence_score,
+                verification=result.verification.value.upper() if result.verification else "REVISE",
+                sources=sources,
+                query_type=result.query_type.value if result.query_type else "SIMPLE",
+                model_used=result.model_used.name if result.model_used else "T1",
+                mode="gpu",
+                latency_ms=elapsed_ms,
+                reasoning_chain=result.reasoning_chain,
+            )
         
-        elapsed_ms = (time.perf_counter() - start_time) * 1000
-        
-        # Map sources to response format
-        sources = []
-        if result.sources:
-            for src in result.sources:
-                sources.append(SourceInfo(
-                    chunk_id=src.chunk_id,
-                    file_name=src.file_name,
-                    snippet=src.snippet[:500],  # Truncate for response
-                    score=src.score_final,
-                    page_number=src.page_number,
-                ))
-        
-        return QueryResponse(
-            answer=result.answer,
-            confidence=result.confidence.value if result.confidence else "none",
-            verification=result.verification.value if result.verification else "REVISE",
-            sources=sources,
-            model_used=result.model_used.name if result.model_used else "T3",
-            latency_ms=elapsed_ms,
-            reasoning_chain=result.reasoning_chain,
-        )
+        else:
+            # CPU mode - use qwen2.5:0.5b (T3) as default
+            tier_map = {"T1": CPUModelTier.T1, "T2": CPUModelTier.T2, "T3": CPUModelTier.T3}
+            tier = tier_map.get(request.tier.upper(), DEFAULT_TIER) if request.tier else DEFAULT_TIER
+            
+            result = await cpu_process_query(
+                query=request.query,
+                tier=tier,
+            )
+            
+            elapsed_ms = (time.perf_counter() - start_time) * 1000
+            
+            # Map CPU sources to response format
+            sources = []
+            if result.sources:
+                for src in result.sources:
+                    sources.append(SourceInfo(
+                        chunk_id=src.chunk_id,
+                        file_name=src.file_name,
+                        snippet=src.snippet[:500],  # Truncate for response
+                        score=src.score_final,
+                        page_number=src.page_number,
+                    ))
+            
+            return QueryResponse(
+                answer=result.answer,
+                confidence=result.confidence.value if result.confidence else "none",
+                confidence_score=result.confidence_score,
+                verification=result.verification.value if result.verification else "REVISE",
+                sources=sources,
+                query_type=result.query_type.value if result.query_type else "SIMPLE",
+                model_used=result.model_used.value if result.model_used else "qwen2.5:0.5b",
+                mode="cpu",
+                latency_ms=elapsed_ms,
+                reasoning_chain=result.reasoning_chain,
+            )
         
     except ValueError as e:
         # Input validation errors

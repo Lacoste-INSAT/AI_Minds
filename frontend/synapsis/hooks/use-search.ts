@@ -81,6 +81,7 @@ export function useSearch(): UseSearchReturn {
           entities: item.entities,
           score: 1,
           source_uri: item.source_uri ?? "",
+
           ingested_at: item.ingested_at,
           group: "documents" as const,
           target: { route: "/timeline" as const, id: item.id },
@@ -165,7 +166,9 @@ export function useSearch(): UseSearchReturn {
       const filtered = MOCK_TIMELINE_ITEMS.filter(
         (item) =>
           item.title.toLowerCase().includes(query) ||
+
           (item.summary ?? "").toLowerCase().includes(query) ||
+
           item.entities.some((e) => e.toLowerCase().includes(query))
       );
       setState({ status: "success", data: toSearchResults(filtered), error: null });
