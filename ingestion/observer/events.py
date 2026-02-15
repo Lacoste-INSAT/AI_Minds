@@ -4,19 +4,30 @@ import time
 import threading
 from datetime import datetime, timezone
 
+# Max attempts before an event is sent to the dead-letter log.
+MAX_RETRIES = 3
+
 
 class FileEvent:
     """Lightweight value object representing a filesystem change."""
 
-    __slots__ = ("event_type", "src_path", "timestamp")
+    __slots__ = ("event_type", "src_path", "timestamp", "attempts", "last_error")
 
     def __init__(self, event_type: str, src_path: str) -> None:
         self.event_type = event_type        # "created" | "modified" | "deleted"
         self.src_path = src_path
         self.timestamp = datetime.now(timezone.utc).isoformat()
+        self.attempts: int = 0
+        self.last_error: str = ""
+
+    @property
+    def retriable(self) -> bool:
+        """True if this event has not exhausted its retry budget."""
+        return self.attempts < MAX_RETRIES
 
     def __repr__(self) -> str:
-        return f"FileEvent({self.event_type}, {self.src_path})"
+        retry_info = f", attempt={self.attempts}" if self.attempts else ""
+        return f"FileEvent({self.event_type}, {self.src_path}{retry_info})"
 
 
 class RateLimiter:
