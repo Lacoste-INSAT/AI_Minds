@@ -76,7 +76,7 @@ export default function IngestionPage() {
   };
 
   return (
-    <div className="animate-fade-in space-y-6 max-w-5xl relative">
+    <div className="animate-fade-in space-y-6 max-w-6xl mx-auto w-full relative">
       {/* Background blobs */}
       <div className="pointer-events-none absolute -top-20 -left-20 w-[400px] h-[400px] rounded-full bg-cyan-500/[0.03] blur-3xl animate-float" />
       <div className="pointer-events-none absolute top-60 -right-32 w-[350px] h-[350px] rounded-full bg-accent/[0.03] blur-3xl animate-float-delay" />

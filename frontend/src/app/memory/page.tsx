@@ -26,7 +26,7 @@ export default function MemoryPage() {
   };
 
   return (
-    <div className="animate-fade-in relative">
+    <div className="animate-fade-in relative max-w-6xl mx-auto w-full">
       {/* Background blobs */}
       <div className="pointer-events-none absolute -top-20 -left-20 w-[400px] h-[400px] rounded-full bg-purple-500/[0.03] blur-3xl animate-float" />
       <div className="pointer-events-none absolute top-60 -right-32 w-[350px] h-[350px] rounded-full bg-accent/[0.03] blur-3xl animate-float-delay" />

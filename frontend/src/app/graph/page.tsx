@@ -159,7 +159,7 @@ export default function GraphPage() {
   const linkWidth = useCallback(() => 0.6, []);
 
   return (
-    <div className="animate-fade-in h-[calc(100vh-6rem)] flex flex-col relative">
+    <div className="animate-fade-in h-[calc(100vh-6rem)] flex flex-col relative max-w-6xl mx-auto w-full">
       {/* Background blob */}
       <div className="pointer-events-none absolute -top-20 -right-20 w-[400px] h-[400px] rounded-full bg-accent/[0.03] blur-3xl animate-float" />
 
