@@ -23,7 +23,12 @@ class Settings(BaseSettings):
     ollama_model_t1: str = "phi4-mini"
     ollama_model_t2: str = "qwen2.5:3b"
     ollama_model_t3: str = "qwen2.5:0.5b"
+    ollama_model_gpu: str = "phi4-mini"
+    ollama_model_cpu: str = "qwen2.5:0.5b"
     ollama_timeout: int = 120  # seconds
+    runtime_fail_fast: bool = True
+    allow_model_fallback: bool = False
+    incident_retention_limit: int = 500
 
     # --- Qdrant ---
     qdrant_host: str = "127.0.0.1"

@@ -52,17 +52,20 @@ async def _check_ollama() -> ServiceStatus:
     """Check Ollama connectivity and model availability."""
     try:
         from backend.services.ollama_client import ollama_client
+        from backend.services.model_router import get_lane_status
 
         available = await ollama_client.is_available()
         if not available:
             return ServiceStatus(status="down", detail={"error": "Ollama not reachable"})
 
         model_info = await ollama_client.get_model_info()
+        lanes = await get_lane_status()
         return ServiceStatus(
             status="up",
             detail={
                 "model": model_info.get("model"),
                 "tier": model_info.get("tier"),
+                "lanes": lanes,
             },
         )
     except Exception as e:

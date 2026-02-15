@@ -2,14 +2,13 @@
 
 /**
  * React hook for ingestion status polling.
- * Falls back to mock data when backend is unavailable.
+ * Uses live backend data only.
  */
 
 import { useState, useEffect, useCallback } from "react";
 import type { IngestionStatusResponse } from "@/types/contracts";
 import type { AsyncState } from "@/types/ui";
 import { apiClient } from "@/lib/api/client";
-import { MOCK_INGESTION_STATUS } from "@/mocks/fixtures";
 import { APP_DEFAULTS } from "@/lib/constants";
 
 export function useIngestionStatus(
@@ -31,7 +30,7 @@ export function useIngestionStatus(
     if (result.ok) {
       setState({ status: "success", data: result.data, error: null });
     } else {
-      setState({ status: "success", data: MOCK_INGESTION_STATUS, error: null });
+      setState({ status: "error", data: null, error: result.error });
     }
   }, []);
 

@@ -2,15 +2,13 @@
 
 /**
  * React hook for source configuration (setup wizard).
- * Falls back to mock data when backend is unavailable.
+ * Uses live backend data only.
  */
 
 import { useState, useEffect, useCallback } from "react";
 import type { SourcesConfigResponse, SourcesConfigUpdate } from "@/types/contracts";
 import type { AsyncState } from "@/types/ui";
 import { apiClient } from "@/lib/api/client";
-import { API_MODE } from "@/lib/env";
-import { MOCK_SOURCES_CONFIG } from "@/mocks/fixtures";
 
 interface UseConfigReturn extends AsyncState<SourcesConfigResponse> {
   refetch: () => void;
@@ -33,11 +31,7 @@ export function useConfig(): UseConfigReturn {
     if (result.ok) {
       setState({ status: "success", data: result.data, error: null });
     } else {
-      if (API_MODE === "mock") {
-        setState({ status: "success", data: MOCK_SOURCES_CONFIG, error: null });
-      } else {
-        setState({ status: "error", data: null, error: result.error });
-      }
+      setState({ status: "error", data: null, error: result.error });
     }
   }, []);
 
@@ -51,6 +45,11 @@ export function useConfig(): UseConfigReturn {
         setState({ status: "success", data: result.data, error: null });
         return true;
       }
+      setState((prev) => ({
+        status: "error",
+        data: prev.data,
+        error: result.error,
+      }));
       return false;
     },
     []

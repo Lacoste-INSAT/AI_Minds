@@ -15,6 +15,7 @@ import { useGraph } from "@/hooks/use-graph";
 import { useInsights } from "@/hooks/use-insights";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { ErrorAlert } from "@/components/shared/error-alert";
 import type { GraphNode } from "@/types/contracts";
 import type { EntityType, GraphViewState } from "@/types/ui";
 
@@ -64,9 +65,8 @@ export default function GraphPage() {
   );
 
   const handleDimensionFallback = useCallback(() => {
-    setFallbackNotice("3D mode is unavailable in this environment. Showing stable 2D mode.");
-    updateViewState({ dimension: "2d" });
-  }, [updateViewState]);
+    setFallbackNotice("3D mode is unavailable in this environment.");
+  }, []);
 
   useEffect(() => {
     if (!graphQuery || !data) {
@@ -111,6 +111,19 @@ export default function GraphPage() {
     return (
       <div className="flex h-full items-center justify-center">
         <Loader2 className="h-6 w-6 animate-spin text-primary" />
+      </div>
+    );
+  }
+
+  if (status === "error") {
+    return (
+      <div className="-m-6 p-6">
+        <ErrorAlert
+          severity="error"
+          title="Graph unavailable"
+          message="Unable to load graph data from backend."
+          onRetry={refetch}
+        />
       </div>
     );
   }

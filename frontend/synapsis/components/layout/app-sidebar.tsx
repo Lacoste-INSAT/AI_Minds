@@ -34,6 +34,8 @@ import {
   Search,
   Settings,
   Brain,
+  FolderCog,
+
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { NAV_ITEMS } from "@/lib/constants";
@@ -47,11 +49,13 @@ const ICON_MAP: Record<string, React.ComponentType<{ className?: string }>> = {
   Clock,
   Search,
   Settings,
+  FolderCog,
+
 };
 
 export function AppSidebar() {
   const pathname = usePathname();
-  const { data: healthData } = useHealth();
+  const { data: healthData, error: healthError } = useHealth();
 
   return (
     <Sidebar collapsible="icon" variant="sidebar">
@@ -125,7 +129,7 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <div className="flex items-center justify-between px-2 py-1">
               <HealthIndicator
-                status={healthData?.status ?? "healthy"}
+                status={healthData?.status ?? (healthError ? "unhealthy" : "healthy")}
                 showLabel
               />
               <ThemeToggle />

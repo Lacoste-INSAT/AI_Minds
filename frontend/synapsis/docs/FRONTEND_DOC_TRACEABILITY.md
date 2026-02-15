@@ -19,11 +19,11 @@ Last updated: 2026-02-15
 | Required routes (`/setup`, `/chat`, `/graph`, `/timeline`, `/search`) | Implemented | `app/(shell)/**` |
 | First-run root routing (`/` -> setup/chat) | Implemented | `app/page.tsx` |
 | Contract typing + runtime validation | Implemented | `types/contracts.ts`, `lib/api/schemas.ts` |
-| Mock-first deterministic mode | Implemented | `lib/env.ts`, `mocks/handlers.ts`, `lib/api/client.ts` |
-| Streaming + fallback | Implemented | `lib/api/ws-client.ts`, `mocks/ws-mock.ts`, `hooks/use-chat.ts` |
+| Strict live runtime (no backend mock fallback) | Implemented | `lib/env.ts`, `lib/api/client.ts`, `hooks/use-*.ts` |
+| Streaming path (no silent fallback substitution) | Implemented | `lib/api/ws-client.ts`, `hooks/use-chat.ts` |
 | Trust UX (confidence/verification/citations/why) | Implemented | `components/chat/answer-card.tsx`, `components/chat/why-answer.tsx` |
 | Timeline filters + virtualization | Implemented | `components/timeline/timeline-filters.tsx`, `components/timeline/timeline-feed.tsx` |
-| Graph 2D/3D toggle + fallback | Implemented | `components/graph/graph-controls.tsx`, `components/graph/graph-canvas.tsx` |
+| Graph 2D/3D toggle + explicit unavailable-state | Implemented | `components/graph/graph-controls.tsx`, `components/graph/graph-canvas.tsx` |
 | Search route + command palette grouped results | Implemented | `components/search/search-filters.tsx`, `components/search/command-palette.tsx` |
 | A11Y baseline (skip link/focus/live region) | Implemented | `components/shared/skip-link.tsx`, `app/globals.css`, `components/chat/message-list.tsx` |
 | No upload/manual ingestion UI | Implemented | setup components only persist path strings |
@@ -61,6 +61,5 @@ Passing commands:
 
 ## 5) Remaining Freeze Items
 
-1. Add real Playwright e2e suites (`test:e2e` is currently a placeholder command).
-2. Add automated accessibility/performance checks into `scripts/run-gates.mjs`.
-3. Keep deferred backend-limited features tracked in project-level deferred-feature documents.
+1. Add richer backend-live e2e journeys beyond route reachability.
+2. Keep deferred backend-limited features tracked in project-level deferred-feature documents.

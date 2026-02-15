@@ -13,13 +13,46 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { HealthIndicator } from "@/components/shared/health-indicator";
 import { ErrorAlert } from "@/components/shared/error-alert";
 import { ConfidenceBadge } from "@/components/shared/confidence-badge";
-import {
-  MOCK_HEALTH_HEALTHY,
-  MOCK_HEALTH_DEGRADED,
-  MOCK_HEALTH_UNHEALTHY,
-  MOCK_ANSWER_ABSTENTION,
-} from "@/mocks/fixtures";
-import type { HealthResponse } from "@/types/contracts";
+import type { HealthResponse, AnswerPacket } from "@/types/contracts";
+
+// ─── Inline Test Data ───
+
+const TEST_HEALTH_HEALTHY: HealthResponse = {
+  status: "healthy",
+  ollama: { status: "up", detail: { model: "llama3.1:8b", loaded: true } },
+  qdrant: { status: "up", detail: { collections: 2, points: 2834 } },
+  sqlite: { status: "up", detail: { size_mb: 12.4 } },
+  disk_free_gb: 128.5,
+  uptime_seconds: 86400,
+};
+
+const TEST_HEALTH_DEGRADED: HealthResponse = {
+  status: "degraded",
+  ollama: { status: "down", detail: { error: "Connection refused" } },
+  qdrant: { status: "up", detail: { collections: 2, points: 2834 } },
+  sqlite: { status: "up", detail: { size_mb: 12.4 } },
+  disk_free_gb: 128.5,
+  uptime_seconds: 3600,
+};
+
+const TEST_HEALTH_UNHEALTHY: HealthResponse = {
+  status: "unhealthy",
+  ollama: { status: "down", detail: { error: "Connection refused" } },
+  qdrant: { status: "down", detail: { error: "Service unavailable" } },
+  sqlite: { status: "up", detail: { size_mb: 12.4 } },
+  disk_free_gb: 2.1,
+  uptime_seconds: 120,
+};
+
+const TEST_ANSWER_ABSTENTION: AnswerPacket = {
+  answer: "I don't have enough information in your records to answer this confidently.",
+  confidence: "none",
+  confidence_score: 0.08,
+  uncertainty_reason: "No relevant documents found in knowledge base.",
+  sources: [],
+  verification: "REJECT",
+  reasoning_chain: "1. Searched vector store with 3 query variations.\n2. No chunks exceeded minimum similarity threshold.\n3. Knowledge graph returned no related entities.\n4. Abstaining from answer.",
+};
 
 // ─── Wrapper for Tooltip Provider ───
 
@@ -165,37 +198,37 @@ describe("Degraded-Mode: Fixture data integrity", () => {
   }
 
   it("healthy: all services up", () => {
-    expect(MOCK_HEALTH_HEALTHY.status).toBe("healthy");
-    assertServiceShape(MOCK_HEALTH_HEALTHY);
-    expect(MOCK_HEALTH_HEALTHY.ollama.status).toBe("up");
-    expect(MOCK_HEALTH_HEALTHY.qdrant.status).toBe("up");
-    expect(MOCK_HEALTH_HEALTHY.sqlite.status).toBe("up");
+    expect(TEST_HEALTH_HEALTHY.status).toBe("healthy");
+    assertServiceShape(TEST_HEALTH_HEALTHY);
+    expect(TEST_HEALTH_HEALTHY.ollama.status).toBe("up");
+    expect(TEST_HEALTH_HEALTHY.qdrant.status).toBe("up");
+    expect(TEST_HEALTH_HEALTHY.sqlite.status).toBe("up");
   });
 
   it("degraded: at least one service down", () => {
-    expect(MOCK_HEALTH_DEGRADED.status).toBe("degraded");
-    assertServiceShape(MOCK_HEALTH_DEGRADED);
+    expect(TEST_HEALTH_DEGRADED.status).toBe("degraded");
+    assertServiceShape(TEST_HEALTH_DEGRADED);
     const services = [
-      MOCK_HEALTH_DEGRADED.ollama.status,
-      MOCK_HEALTH_DEGRADED.qdrant.status,
-      MOCK_HEALTH_DEGRADED.sqlite.status,
+      TEST_HEALTH_DEGRADED.ollama.status,
+      TEST_HEALTH_DEGRADED.qdrant.status,
+      TEST_HEALTH_DEGRADED.sqlite.status,
     ];
     expect(services).toContain("down");
   });
 
   it("unhealthy: multiple services down", () => {
-    expect(MOCK_HEALTH_UNHEALTHY.status).toBe("unhealthy");
-    assertServiceShape(MOCK_HEALTH_UNHEALTHY);
+    expect(TEST_HEALTH_UNHEALTHY.status).toBe("unhealthy");
+    assertServiceShape(TEST_HEALTH_UNHEALTHY);
     const downCount = [
-      MOCK_HEALTH_UNHEALTHY.ollama.status,
-      MOCK_HEALTH_UNHEALTHY.qdrant.status,
-      MOCK_HEALTH_UNHEALTHY.sqlite.status,
+      TEST_HEALTH_UNHEALTHY.ollama.status,
+      TEST_HEALTH_UNHEALTHY.qdrant.status,
+      TEST_HEALTH_UNHEALTHY.sqlite.status,
     ].filter((s) => s === "down").length;
     expect(downCount).toBeGreaterThanOrEqual(2);
   });
 
   it("abstention answer has none confidence", () => {
-    expect(MOCK_ANSWER_ABSTENTION.confidence).toBe("none");
-    expect(MOCK_ANSWER_ABSTENTION.verification).toBe("REJECT");
+    expect(TEST_ANSWER_ABSTENTION.confidence).toBe("none");
+    expect(TEST_ANSWER_ABSTENTION.verification).toBe("REJECT");
   });
 });

@@ -11,11 +11,14 @@ export const API_ENDPOINTS = {
   memoryGraph: "/memory/graph",
   memoryTimeline: "/memory/timeline",
   memoryStats: "/memory/stats",
+  memorySearch: "/memory/search",
   memoryDetail: (id: string) => `/memory/${id}`,
   configSources: "/config/sources",
   insightsDigest: "/insights/digest",
   insightsPatterns: "/insights/patterns",
   insightsAll: "/insights/all",
+  runtimePolicy: "/runtime/policy",
+  runtimeIncidents: "/runtime/incidents",
 } as const;
 
 export const WS_ENDPOINTS = {

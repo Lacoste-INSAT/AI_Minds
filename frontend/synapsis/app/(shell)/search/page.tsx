@@ -4,12 +4,13 @@ import { useRouter } from "next/navigation";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { SearchFilters } from "@/components/search/search-filters";
 import { SearchResults } from "@/components/search/search-results";
+import { ErrorAlert } from "@/components/shared/error-alert";
 import { useSearch } from "@/hooks/use-search";
 import type { SearchResult } from "@/types/ui";
 
 export default function SearchPage() {
   const router = useRouter();
-  const { status, filters, setFilters, groupedResults } = useSearch();
+  const { status, error, filters, setFilters, groupedResults, search } = useSearch();
 
   const navigateFromResult = (result: SearchResult) => {
     const params = new URLSearchParams();
@@ -33,6 +34,15 @@ export default function SearchPage() {
       </div>
 
       <SearchFilters filters={filters} onFilterChange={setFilters} />
+
+      {status === "error" && (
+        <ErrorAlert
+          severity="error"
+          title="Search unavailable"
+          message={error ?? "Unable to load search results from backend."}
+          onRetry={search}
+        />
+      )}
 
       {/* Results */}
       <ScrollArea className="flex-1">

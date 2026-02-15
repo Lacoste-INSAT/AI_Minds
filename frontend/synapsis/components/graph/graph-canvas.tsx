@@ -2,7 +2,7 @@
 
 /**
  * GraphCanvas — 2D/3D force-directed graph using react-force-graph.
- * Dynamically imported to avoid SSR issues. Falls back to loading state.
+ * Dynamically imported to avoid SSR issues.
  *
  * Source: ARCHITECTURE.md §Knowledge Graph, DESIGN_SYSTEM.md
  */
@@ -163,14 +163,14 @@ export function GraphCanvas({
     };
   }, []);
 
-  const renderDimension: GraphDimension =
-    dimension === "3d" && !isReducedMotion && supportsWebGl ? "3d" : "2d";
+  const is3DUnavailable =
+    dimension === "3d" && (isReducedMotion || !supportsWebGl);
 
   useEffect(() => {
-    if (dimension === "3d" && renderDimension === "2d") {
+    if (is3DUnavailable) {
       onDimensionFallback?.("2d");
     }
-  }, [dimension, renderDimension, onDimensionFallback]);
+  }, [is3DUnavailable, onDimensionFallback]);
 
   // Transform to render format
   const graphData = useMemo(() => {
@@ -216,6 +216,22 @@ export function GraphCanvas({
     );
   }
 
+  if (is3DUnavailable) {
+    return (
+      <div
+        className={cn(
+          "flex h-full items-center justify-center rounded-lg border border-dashed bg-muted/20 px-4 text-center",
+          className
+        )}
+        role="status"
+      >
+        <p className="text-sm text-muted-foreground">
+          3D mode is unavailable in this environment. Disable reduced motion or use 2D mode.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={containerRef}
@@ -223,7 +239,7 @@ export function GraphCanvas({
       role="img"
       aria-label="Knowledge graph visualization"
     >
-      {renderDimension === "3d" ? (
+      {dimension === "3d" ? (
         <ForceGraph3D
           graphData={graphData}
           nodeLabel={(node) => `${node.name} (${node.type})`}

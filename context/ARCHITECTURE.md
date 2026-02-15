@@ -1,9 +1,9 @@
 # Synapsis — System Architecture (FINAL)
 
-> **Version**: 4.1 — Fact-checked models + 3-tier fallback + accessibility  
-> **Date**: 2026-02-14  
+> **Version**: 4.2 — Dual-lane CPU/GPU runtime + explicit incident policy  
+> **Date**: 2026-02-15  
 > **Status**: LOCKED — Implement from this document  
-> **Change**: 3-tier model strategy (phi4-mini → qwen2.5:3b → qwen2.5:0.5b), fact-checked all model specs via HuggingFace/Ollama, accessibility baseline, Search+Filters view, compliance gate
+> **Change**: Runtime policy update: static lane split (GPU interactive, CPU background) with explicit failure/incident visibility and no hidden runtime masking. Historical 3-tier model chain remains documented for compatibility notes.
 
 ---
 

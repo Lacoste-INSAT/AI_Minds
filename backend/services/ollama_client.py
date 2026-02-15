@@ -1,6 +1,6 @@
 """
 Synapsis Backend — Ollama LLM Client
-3-tier fallback: phi4-mini → qwen2.5:3b → qwen2.5:0.5b
+Fail-fast model execution with explicit model selection.
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ logger = structlog.get_logger(__name__)
 
 
 class OllamaClient:
-    """Async client for Ollama API with 3-tier model fallback."""
+    """Async client for Ollama API with explicit model selection."""
 
     def __init__(self):
         self.base_url = settings.ollama_base_url
@@ -55,30 +55,37 @@ class OllamaClient:
         except Exception:
             return False
 
-    async def get_available_model(self) -> str | None:
-        """Find the first available model from the 3-tier chain."""
+    async def get_available_models(self) -> set[str]:
+        """Return set of available model names (with and without tags)."""
         try:
             client = await self._get_client()
             resp = await client.get("/api/tags")
             if resp.status_code != 200:
-                return None
+                return set()
             data = resp.json()
             available: set[str] = set()
             for m in data.get("models", []):
                 full_name = m["name"]          # e.g. "phi4-mini:latest"
                 available.add(full_name)          # exact name
                 available.add(full_name.split(":")[0])  # base name without tag
-
-            for i, model in enumerate(self.models):
-                # Check various name formats
-                if model in available or f"{model}:latest" in available:
-                    self.active_model = model
-                    self.active_tier = i + 1
-                    logger.info("ollama.model_selected", model=model, tier=self.active_tier)
-                    return model
+            return available
         except Exception as e:
             logger.error("ollama.model_check_failed", error=str(e))
+            return set()
 
+    async def is_model_available(self, model: str) -> bool:
+        available = await self.get_available_models()
+        return model in available or f"{model}:latest" in available
+
+    async def get_available_model(self) -> str | None:
+        """Find first available configured model (for legacy health display)."""
+        available = await self.get_available_models()
+        for i, model in enumerate(self.models):
+            if model in available or f"{model}:latest" in available:
+                self.active_model = model
+                self.active_tier = i + 1
+                logger.info("ollama.model_selected", model=model, tier=self.active_tier)
+                return model
         return None
 
     async def get_model_info(self) -> dict:
@@ -102,25 +109,24 @@ class OllamaClient:
         temperature: float = 0.3,
         max_tokens: int = 2048,
     ) -> str:
-        """Generate a completion. Falls back through tiers on failure."""
+        """Generate with current active model only (fail-fast)."""
         if not self.active_model:
             await self.get_available_model()
+        model = self.active_model
+        if not model:
+            raise RuntimeError("No configured Ollama model is available")
+        return await self._call_generate(model, prompt, system, temperature, max_tokens)
 
-        models_to_try = (
-            self.models[self.active_tier - 1:] if self.active_tier > 0 else self.models
-        )
-
-        for model in models_to_try:
-            try:
-                return await self._call_generate(
-                    model, prompt, system, temperature, max_tokens
-                )
-            except Exception as e:
-                logger.warning("ollama.generate_failed", model=model, error=str(e))
-                continue
-
-        logger.error("ollama.all_tiers_failed")
-        return "I'm unable to process this request right now. All model tiers are unavailable."
+    async def generate_with_model(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        system: str | None = None,
+        temperature: float = 0.3,
+        max_tokens: int = 2048,
+    ) -> str:
+        return await self._call_generate(model, prompt, system, temperature, max_tokens)
 
     async def _call_generate(
         self,
@@ -156,23 +162,23 @@ class OllamaClient:
         temperature: float = 0.3,
         max_tokens: int = 2048,
     ) -> str:
-        """Chat-style completion using /api/chat."""
+        """Chat-style completion using current active model only (fail-fast)."""
         if not self.active_model:
             await self.get_available_model()
+        model = self.active_model
+        if not model:
+            raise RuntimeError("No configured Ollama model is available")
+        return await self._call_chat(model, messages, temperature, max_tokens)
 
-        models_to_try = (
-            self.models[self.active_tier - 1:] if self.active_tier > 0 else self.models
-        )
-
-        for model in models_to_try:
-            try:
-                return await self._call_chat(model, messages, temperature, max_tokens)
-            except Exception as e:
-                logger.warning("ollama.chat_failed", model=model, error=str(e))
-                continue
-
-        logger.error("ollama.all_tiers_failed")
-        return "I'm unable to process this request right now."
+    async def chat_with_model(
+        self,
+        *,
+        model: str,
+        messages: list[dict],
+        temperature: float = 0.3,
+        max_tokens: int = 2048,
+    ) -> str:
+        return await self._call_chat(model, messages, temperature, max_tokens)
 
     async def _call_chat(
         self,
@@ -207,11 +213,32 @@ class OllamaClient:
         temperature: float = 0.3,
         max_tokens: int = 2048,
     ) -> AsyncGenerator[str, None]:
-        """Stream tokens from Ollama."""
+        """Stream tokens from active model only (fail-fast)."""
         if not self.active_model:
             await self.get_available_model()
 
-        model = self.active_model or self.models[0]
+        model = self.active_model
+        if not model:
+            raise RuntimeError("No configured Ollama model is available")
+        async for token in self.stream_generate_with_model(
+            model=model,
+            prompt=prompt,
+            system=system,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        ):
+            yield token
+
+    async def stream_generate_with_model(
+        self,
+        *,
+        model: str,
+        prompt: str,
+        system: str | None = None,
+        temperature: float = 0.3,
+        max_tokens: int = 2048,
+    ) -> AsyncGenerator[str, None]:
+        """Stream tokens from a specific model."""
         client = await self._get_client()
 
         payload: dict = {
@@ -240,7 +267,7 @@ class OllamaClient:
                         except json.JSONDecodeError:
                             continue
         except Exception as e:
-            logger.error("ollama.stream_failed", error=str(e))
+            logger.error("ollama.stream_failed", model=model, error=str(e))
             yield f"[Error: {str(e)}]"
 
     async def stream_chat(
@@ -249,11 +276,30 @@ class OllamaClient:
         temperature: float = 0.3,
         max_tokens: int = 2048,
     ) -> AsyncGenerator[str, None]:
-        """Stream tokens from Ollama chat API."""
+        """Stream tokens from Ollama chat API with active model only."""
         if not self.active_model:
             await self.get_available_model()
 
-        model = self.active_model or self.models[0]
+        model = self.active_model
+        if not model:
+            raise RuntimeError("No configured Ollama model is available")
+        async for token in self.stream_chat_with_model(
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+        ):
+            yield token
+
+    async def stream_chat_with_model(
+        self,
+        *,
+        model: str,
+        messages: list[dict],
+        temperature: float = 0.3,
+        max_tokens: int = 2048,
+    ) -> AsyncGenerator[str, None]:
+        """Stream tokens from a specific chat model."""
         client = await self._get_client()
 
         payload = {
@@ -280,7 +326,7 @@ class OllamaClient:
                         except json.JSONDecodeError:
                             continue
         except Exception as e:
-            logger.error("ollama.stream_chat_failed", error=str(e))
+            logger.error("ollama.stream_chat_failed", model=model, error=str(e))
             yield f"[Error: {str(e)}]"
 
 

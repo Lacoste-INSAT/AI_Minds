@@ -40,8 +40,16 @@ async def trigger_scan(directories: list[str] | None = Body(default=None)):
     If *directories* is omitted the currently-configured watched
     directories are scanned.
     """
-    result = await scan_and_ingest(directories)
-    return result
+    try:
+        result = await scan_and_ingest(directories)
+        return result
+    except Exception as exc:
+        logger.error("scan.endpoint_error", error=str(exc))
+        return {
+            "message": f"Scan failed: {exc}",
+            "files_processed": 0,
+            "errors": 1,
+        }
 
 
 @router.websocket("/ws")
@@ -53,7 +61,7 @@ async def ingestion_websocket(websocket: WebSocket):
     try:
         await websocket.send_json({
             "event": "status",
-            "data": ingestion_state.get_status(),
+            "payload": ingestion_state.get_status(),
         })
 
         while True:
@@ -63,7 +71,7 @@ async def ingestion_websocket(websocket: WebSocket):
             if data.get("command") == "status":
                 await websocket.send_json({
                     "event": "status",
-                    "data": ingestion_state.get_status(),
+                    "payload": ingestion_state.get_status(),
                 })
 
     except WebSocketDisconnect:

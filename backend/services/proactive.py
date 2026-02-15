@@ -11,21 +11,26 @@ import structlog
 
 from backend.database import get_db, log_audit
 from backend.utils.helpers import generate_id, utc_now
+from backend.services.model_router import ModelTask, generate_for_task, ensure_lane
 
 logger = structlog.get_logger(__name__)
 
 # In-memory store for recent insights
 _insights: list[dict] = []
+_loaded = False
 
 
 def get_recent_insights(limit: int = 20) -> list[dict]:
     """Get the most recent insights."""
+    _load_insights_once()
     return _insights[-limit:] if _insights else []
 
 
 def _add_insight(insight_type: str, title: str, description: str, entities: list[str] | None = None):
     """Add an insight to the store."""
+    _load_insights_once()
     insight = {
+        "id": generate_id(),
         "type": insight_type,
         "title": title,
         "description": description,
@@ -39,8 +44,47 @@ def _add_insight(insight_type: str, title: str, description: str, entities: list
     if len(_insights) > _MAX_INSIGHTS:
         del _insights[:-_MAX_INSIGHTS]
 
+    with get_db() as conn:
+        conn.execute(
+            """INSERT INTO proactive_insights (id, type, title, description, related_entities, created_at)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                insight["id"],
+                insight["type"],
+                insight["title"],
+                insight["description"],
+                json.dumps(insight["related_entities"]),
+                insight["created_at"],
+            ),
+        )
+
     log_audit("insight_generated", insight)
     logger.info("proactive.insight", type=insight_type, title=title)
+
+
+def _load_insights_once() -> None:
+    global _loaded
+    if _loaded:
+        return
+    with get_db() as conn:
+        rows = conn.execute(
+            """SELECT id, type, title, description, related_entities, created_at
+               FROM proactive_insights
+               ORDER BY created_at ASC
+               LIMIT 500"""
+        ).fetchall()
+    for row in rows:
+        _insights.append(
+            {
+                "id": row["id"],
+                "type": row["type"],
+                "title": row["title"],
+                "description": row["description"],
+                "related_entities": json.loads(row["related_entities"]) if row["related_entities"] else [],
+                "created_at": row["created_at"],
+            }
+        )
+    _loaded = True
 
 
 # ---------------------------------------------------------------------------
@@ -129,9 +173,11 @@ async def detect_contradictions(document_id: str) -> list[dict]:
         return contradictions
 
     # Use LLM to detect contradictions between new content and existing beliefs
-    try:
-        from backend.services.ollama_client import ollama_client
+    lane_ok, _ = await ensure_lane(ModelTask.background_proactive, operation="proactive_contradictions")
+    if not lane_ok:
+        return contradictions
 
+    try:
         new_content = " ".join(r["content"] for r in chunk_rows)[:2000]
         existing_beliefs_text = "\n".join(
             f"- [{b['name']}]: {b['belief']} (from {b['timestamp']})"
@@ -155,11 +201,13 @@ If there are contradictions, respond with JSON:
 If no contradictions, respond: {{"contradictions": []}}
 """
 
-        response = await ollama_client.generate(
+        response = await generate_for_task(
+            task=ModelTask.background_proactive,
             prompt=prompt,
             system="You are a contradiction detection agent. Return ONLY valid JSON.",
             temperature=0.1,
             max_tokens=512,
+            operation="proactive_contradictions",
         )
 
         import re
@@ -219,9 +267,12 @@ async def generate_digest() -> dict:
         ]
 
     # Generate narrative summary via LLM
-    try:
-        from backend.services.ollama_client import ollama_client
+    lane_ok, _ = await ensure_lane(ModelTask.background_proactive, operation="proactive_digest")
+    if not lane_ok:
+        digest["summary"] = f"You have {digest['total_documents']} documents ingested."
+        return digest
 
+    try:
         topics = ", ".join(f"{k} ({v} mentions)" for k, v in digest["topic_mentions"].items())
         entities_str = ", ".join(f"{e['name']} ({e['mentions']}x)" for e in digest["recent_entities"])
 
@@ -233,11 +284,13 @@ Total documents: {digest['total_documents']}
 
 Be conversational and insightful. Highlight notable patterns."""
 
-        summary = await ollama_client.generate(
+        summary = await generate_for_task(
+            task=ModelTask.background_proactive,
             prompt=prompt,
             system="You are a helpful knowledge digest assistant. Be concise and insightful.",
             temperature=0.4,
             max_tokens=256,
+            operation="proactive_digest",
         )
         digest["summary"] = summary.strip()
     except Exception as e:

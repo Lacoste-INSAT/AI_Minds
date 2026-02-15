@@ -46,10 +46,12 @@ export const NAV_ITEMS: NavItem[] = [
     description: "Find specific knowledge",
   },
   {
-    title: "Setup",
-    href: "/setup",
+
+    title: "Settings",
+    href: "/settings",
     icon: "Settings",
-    description: "Configure knowledge sources",
+    description: "Manage knowledge sources & watcher",
+
   },
 ];
 
@@ -169,6 +171,7 @@ export const MODALITY_CONFIG: Record<
   pdf: { label: "PDF", icon: "FileType" },
   image: { label: "Image", icon: "Image" },
   audio: { label: "Audio", icon: "Headphones" },
+  json: { label: "JSON", icon: "FileJson" },
 };
 
 // ─── Health ───

@@ -35,7 +35,8 @@ CREATE TABLE IF NOT EXISTS documents (
     source_uri  TEXT,
     checksum    TEXT UNIQUE,
     ingested_at TEXT NOT NULL,
-    status      TEXT DEFAULT 'processed'
+    status      TEXT DEFAULT 'processed',
+    enrichment_status TEXT DEFAULT 'pending'
 );
 
 CREATE TABLE IF NOT EXISTS chunks (
@@ -97,6 +98,26 @@ CREATE TABLE IF NOT EXISTS audit_log (
     timestamp  TEXT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS proactive_insights (
+    id          TEXT PRIMARY KEY,
+    type        TEXT NOT NULL,
+    title       TEXT NOT NULL,
+    description TEXT NOT NULL,
+    related_entities TEXT,
+    created_at  TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS runtime_incidents (
+    id          TEXT PRIMARY KEY,
+    timestamp   TEXT NOT NULL,
+    subsystem   TEXT NOT NULL,
+    operation   TEXT NOT NULL,
+    reason      TEXT NOT NULL,
+    severity    TEXT NOT NULL,
+    blocked     INTEGER DEFAULT 0,
+    payload     TEXT
+);
+
 CREATE INDEX IF NOT EXISTS idx_edges_source ON edges(source_id);
 CREATE INDEX IF NOT EXISTS idx_edges_target ON edges(target_id);
 CREATE INDEX IF NOT EXISTS idx_edges_triple ON edges(source_id, target_id, relationship);
@@ -107,6 +128,8 @@ CREATE INDEX IF NOT EXISTS idx_node_chunks_chunk ON node_chunks(chunk_id);
 CREATE INDEX IF NOT EXISTS idx_beliefs_node ON beliefs(node_id);
 CREATE INDEX IF NOT EXISTS idx_chunks_doc ON chunks(document_id);
 CREATE INDEX IF NOT EXISTS idx_docs_checksum ON documents(checksum);
+CREATE INDEX IF NOT EXISTS idx_runtime_incidents_ts ON runtime_incidents(timestamp);
+CREATE INDEX IF NOT EXISTS idx_proactive_insights_created ON proactive_insights(created_at);
 """
 
 
@@ -153,7 +176,17 @@ def init_db():
     """Create all tables and indices if they don't exist."""
     with get_db() as conn:
         conn.executescript(SCHEMA_SQL)
+        _migrate_columns(conn)
     logger.info("database.initialized", path=_get_db_path())
+
+
+def _migrate_columns(conn: sqlite3.Connection):
+    """Best-effort additive migrations for existing databases."""
+    doc_cols = {row["name"] for row in conn.execute("PRAGMA table_info(documents)").fetchall()}
+    if "enrichment_status" not in doc_cols:
+        conn.execute(
+            "ALTER TABLE documents ADD COLUMN enrichment_status TEXT DEFAULT 'pending'"
+        )
 
 
 # ---------------------------------------------------------------------------

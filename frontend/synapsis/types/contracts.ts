@@ -3,8 +3,7 @@ export type VerificationStatus = "APPROVE" | "REVISE" | "REJECT";
 export type ServiceState = "up" | "down";
 export type HealthState = "healthy" | "degraded" | "unhealthy";
 
-// Backend timeline currently documents these modalities.
-export type TimelineModality = "text" | "pdf" | "image" | "audio";
+export type TimelineModality = "text" | "pdf" | "image" | "audio" | "json";
 
 export interface ChunkEvidence {
   chunk_id: string;
@@ -22,7 +21,7 @@ export interface AnswerPacket {
   uncertainty_reason: string | null;
   sources: ChunkEvidence[];
   verification: VerificationStatus;
-  reasoning_chain: string;
+  reasoning_chain: string | null;
 }
 
 export interface QueryRequest {
@@ -65,10 +64,10 @@ export interface GraphData {
 export interface TimelineItem {
   id: string;
   title: string;
-  summary: string;
-  category: string;
+  summary: string | null;
+  category: string | null;
   modality: TimelineModality;
-  source_uri: string;
+  source_uri: string | null;
   ingested_at: string;
   entities: string[];
 }
@@ -89,15 +88,16 @@ export interface MemoryDetailChunk {
 export interface MemoryDetail {
   id: string;
   filename: string;
-  modality: TimelineModality;
-  source_uri: string;
+  modality: string;
+  source_uri: string | null;
   ingested_at: string;
   status: string;
-  summary: string;
-  category: string;
+  enrichment_status?: string | null;
+  summary: string | null;
+  category: string | null;
   entities: string[];
   action_items: string[];
-  chunks: MemoryDetailChunk[];
+  chunks: Record<string, unknown>[];
 }
 
 export interface MemoryStats {
@@ -111,7 +111,7 @@ export interface MemoryStats {
 }
 
 export interface WatchedDirectory {
-  id: string;
+  id: string | null;
   path: string;
   enabled: boolean;
   exclude_patterns: string[];
@@ -138,7 +138,7 @@ export interface IngestionStatusResponse {
   files_processed: number;
   files_failed: number;
   files_skipped: number;
-  last_scan_time: string;
+  last_scan_time: string | null;
   is_watching: boolean;
   watched_directories: string[];
 }
@@ -155,16 +155,50 @@ export type IngestionWsEventType =
   | "file_deleted"
   | "file_error"
   | "scan_started"
-  | "scan_completed";
+  | "scan_completed"
+  | "incident";
 
 export interface IngestionWsMessage {
   event: IngestionWsEventType;
   payload: Record<string, unknown>;
 }
 
+export interface MemorySearchResult {
+  chunk_id: string;
+  content: string;
+  chunk_index: number;
+  summary: string | null;
+  category: string | null;
+  action_items: string[];
+  document_id: string;
+  filename: string;
+  modality: TimelineModality;
+  ingested_at: string;
+}
+
+export type IncidentSeverity = "info" | "warning" | "error" | "critical";
+
+export interface RuntimeIncident {
+  id: string;
+  timestamp: string;
+  subsystem: string;
+  operation: string;
+  reason: string;
+  severity: IncidentSeverity;
+  blocked: boolean;
+  payload: Record<string, unknown> | null;
+}
+
+export interface RuntimePolicyResponse {
+  fail_fast: boolean;
+  allow_model_fallback: boolean;
+  lane_assignment: Record<string, string>;
+  outage_policy: string;
+}
+
 export interface ServiceHealthDetail {
   status: ServiceState;
-  detail: Record<string, unknown>;
+  detail: Record<string, unknown> | null;
 }
 
 export interface HealthResponse {
@@ -172,7 +206,7 @@ export interface HealthResponse {
   ollama: ServiceHealthDetail;
   qdrant: ServiceHealthDetail;
   sqlite: ServiceHealthDetail;
-  disk_free_gb: number;
+  disk_free_gb: number | null;
   uptime_seconds: number;
 }
 
@@ -187,7 +221,7 @@ export interface InsightItem {
 
 export interface DigestResponse {
   insights: InsightItem[];
-  generated_at: string;
+  generated_at: string | null;
 }
 
 export interface PatternsResponse {
@@ -200,3 +234,4 @@ export interface ApiRootResponse {
   status: string;
   docs: string;
 }
+

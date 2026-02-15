@@ -24,6 +24,8 @@ import structlog
 from backend.config import settings
 from backend.database import get_db, log_audit
 from backend.utils.helpers import generate_id, utc_now, file_checksum, get_modality
+from backend.services.model_router import ModelTask, generate_for_task, ensure_lane
+from backend.services.runtime_incidents import emit_incident, subscribe
 
 logger = structlog.get_logger(__name__)
 
@@ -78,12 +80,19 @@ async def _broadcast_ws(event: str, data: dict) -> None:
     """Push a real-time event to all connected ingestion WebSocket clients."""
     for ws in list(_ws_clients):
         try:
-            await ws.send_json({"event": event, "data": data})
+            await ws.send_json({"event": event, "payload": data})
         except Exception:
             try:
                 _ws_clients.remove(ws)
             except ValueError:
                 pass
+
+
+async def _broadcast_incident(incident) -> None:
+    await _broadcast_ws("incident", incident.model_dump())
+
+
+subscribe(_broadcast_incident)
 
 
 # ---------------------------------------------------------------------------
@@ -229,6 +238,14 @@ async def _consume_events() -> None:
             error_msg = f"{fe.src_path}: {e}"
             ingestion_state.errors.append(error_msg)
             logger.error("ingestion.event_failed", path=fe.src_path, error=str(e))
+            await emit_incident(
+                "ingestion",
+                "event_consume",
+                f"Failed to process file event: {e}",
+                severity="error",
+                blocked=False,
+                payload={"path": fe.src_path, "event_type": fe.event_type},
+            )
             await _broadcast_ws("file_error", {
                 "path": fe.src_path,
                 "error": str(e),
@@ -313,8 +330,8 @@ async def ingest_file(file_path: str) -> dict[str, Any] | None:
     with get_db() as conn:
         conn.execute(
             """INSERT INTO documents
-               (id, filename, modality, source_type, source_uri, checksum, ingested_at, status)
-               VALUES (?, ?, ?, 'auto_scan', ?, ?, ?, 'processing')""",
+               (id, filename, modality, source_type, source_uri, checksum, ingested_at, status, enrichment_status)
+               VALUES (?, ?, ?, 'auto_scan', ?, ?, ?, 'processing', 'pending')""",
             (doc_id, path.name, modality, source_uri, checksum, now),
         )
 
@@ -327,6 +344,14 @@ async def ingest_file(file_path: str) -> dict[str, Any] | None:
         )
     except Exception:
         # Fallback: naive fixed-window split
+        await emit_incident(
+            "ingestion",
+            "chunking",
+            "Primary chunker failed, using naive fixed-window split.",
+            severity="warning",
+            blocked=False,
+            payload={"path": file_path},
+        )
         step = max(settings.chunk_size - settings.chunk_overlap, 1)
         chunks = [raw_text[i:i + settings.chunk_size]
                   for i in range(0, len(raw_text), step)]
@@ -450,8 +475,6 @@ async def ingest_file(file_path: str) -> dict[str, Any] | None:
 
 async def _llm_enrich(doc_id: str, chunk_texts: list[str]) -> None:
     """Use LLM to generate summary, category, and action items."""
-    from backend.services.ollama_client import ollama_client
-
     combined = "\n\n".join(chunk_texts)[:3000]
 
     prompt = (
@@ -465,12 +488,39 @@ async def _llm_enrich(doc_id: str, chunk_texts: list[str]) -> None:
         '{"summary": "...", "category": "...", "action_items": ["..."]}'
     )
 
-    response = await ollama_client.generate(
-        prompt=prompt,
-        system="You are a document analysis assistant. Return ONLY valid JSON.",
-        temperature=0.1,
-        max_tokens=512,
-    )
+    lane_ok, _ = await ensure_lane(ModelTask.background_enrichment, operation="ingestion_enrichment")
+    if not lane_ok:
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE documents SET enrichment_status = 'deferred' WHERE id = ?",
+                (doc_id,),
+            )
+        return
+
+    try:
+        response = await generate_for_task(
+            task=ModelTask.background_enrichment,
+            prompt=prompt,
+            system="You are a document analysis assistant. Return ONLY valid JSON.",
+            temperature=0.1,
+            max_tokens=512,
+            operation="ingestion_enrichment",
+        )
+    except Exception as exc:
+        await emit_incident(
+            "ingestion",
+            "llm_enrichment",
+            f"Background enrichment failed: {exc}",
+            severity="warning",
+            blocked=False,
+            payload={"document_id": doc_id},
+        )
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE documents SET enrichment_status = 'failed' WHERE id = ?",
+                (doc_id,),
+            )
+        return
 
     json_match = re.search(r"\{[\s\S]*\}", response)
     if json_match:
@@ -484,6 +534,16 @@ async def _llm_enrich(doc_id: str, chunk_texts: list[str]) -> None:
                 """UPDATE chunks SET summary = ?, category = ?, action_items = ?
                    WHERE document_id = ? AND chunk_index = 0""",
                 (summary, category, action_items, doc_id),
+            )
+            conn.execute(
+                "UPDATE documents SET enrichment_status = 'completed' WHERE id = ?",
+                (doc_id,),
+            )
+    else:
+        with get_db() as conn:
+            conn.execute(
+                "UPDATE documents SET enrichment_status = 'failed' WHERE id = ?",
+                (doc_id,),
             )
 
 
@@ -563,34 +623,40 @@ async def scan_and_ingest(directories: list[str] | None = None) -> dict[str, Any
         checksum_store = ChecksumStore()
 
         for directory in resolved:
-            for root, _, files in os.walk(directory):
-                for name in files:
-                    filepath = str(Path(root, name).absolute())
+            try:
+                for root, _, files in os.walk(directory):
+                    for name in files:
+                        filepath = str(Path(root, name).absolute())
 
-                    if not passes_all(filepath, config):
-                        continue
+                        if not passes_all(filepath, config):
+                            continue
 
-                    new_cs = compute(filepath)
-                    if new_cs is None:
-                        continue
+                        new_cs = compute(filepath)
+                        if new_cs is None:
+                            continue
 
-                    if checksum_store.get(filepath) == new_cs:
-                        continue
+                        if checksum_store.get(filepath) == new_cs:
+                            continue
 
-                    checksum_store.set(filepath, new_cs)
+                        checksum_store.set(filepath, new_cs)
 
-                    try:
-                        result = await ingest_file(filepath)
-                        if result:
-                            processed += 1
-                            await _broadcast_ws("file_processed", {
-                                "path": filepath,
-                                "event": "scan",
-                                **result,
-                            })
-                    except Exception as exc:
-                        errors += 1
-                        logger.error("scan.file_failed", path=filepath, error=str(exc))
+                        try:
+                            result = await ingest_file(filepath)
+                            if result:
+                                processed += 1
+                                await _broadcast_ws("file_processed", {
+                                    "path": filepath,
+                                    "event": "scan",
+                                    **result,
+                                })
+                        except Exception as exc:
+                            errors += 1
+                            logger.error("scan.file_failed", path=filepath, error=str(exc))
+            except PermissionError:
+                logger.warning("scan.permission_denied", directory=directory)
+            except Exception as walk_exc:
+                errors += 1
+                logger.error("scan.walk_failed", directory=directory, error=str(walk_exc))
 
         checksum_store.save()
 

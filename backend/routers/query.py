@@ -12,10 +12,11 @@ from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 import structlog
 
 from backend.models.schemas import QueryRequest, AnswerPacket
-from backend.services.reasoning import process_query, assemble_context
-from backend.services.ollama_client import ollama_client
+from backend.services.reasoning import process_query, assemble_context, verify_answer, compute_confidence
 from backend.services.embeddings import embed_text
 from backend.services.retrieval import hybrid_search, results_to_evidence
+from backend.services.model_router import ModelTask, stream_generate_for_task, ensure_lane
+from backend.services.runtime_incidents import emit_incident
 
 logger = structlog.get_logger(__name__)
 
@@ -81,20 +82,50 @@ async def stream_answer(websocket: WebSocket):
                 "Always cite sources. Never fabricate information."
             )
 
+            lane_ok, _ = await ensure_lane(ModelTask.interactive_heavy, operation="query_stream")
+            if not lane_ok:
+                await websocket.send_json(
+                    {"type": "error", "data": "GPU lane unavailable for streaming responses"}
+                )
+                await emit_incident(
+                    "query",
+                    "stream",
+                    "Streaming blocked because GPU lane is unavailable.",
+                    severity="error",
+                    blocked=True,
+                    payload={"question_preview": question[:80]},
+                )
+                continue
+
             full_answer = ""
-            async for token in ollama_client.stream_generate(
+            async for token in stream_generate_for_task(
+                task=ModelTask.interactive_heavy,
                 prompt=prompt,
                 system=system,
                 temperature=0.3,
+                max_tokens=2048,
+                operation="query_stream",
             ):
                 full_answer += token
                 await websocket.send_json({"type": "token", "data": token})
 
             # Step 3: Send final packet with sources
             sources = results_to_evidence(results)
+            verdict, critic_reasoning = await verify_answer(question, full_answer, context)
+            confidence_level, confidence_score, uncertainty_reason = compute_confidence(results, verdict)
             answer_packet = AnswerPacket(
                 answer=full_answer,
+                confidence=confidence_level,
+                confidence_score=confidence_score,
+                uncertainty_reason=uncertainty_reason,
                 sources=sources,
+                verification=verdict,
+                reasoning_chain=(
+                    f"Streaming path\n"
+                    f"Retrieval: {len(results)} chunks found\n"
+                    f"Verification: {verdict}\n"
+                    f"Critic: {critic_reasoning}"
+                ),
             )
             await websocket.send_json({
                 "type": "done",
@@ -105,6 +136,13 @@ async def stream_answer(websocket: WebSocket):
         logger.info("query.stream_disconnected")
     except Exception as e:
         logger.error("query.stream_error", error=str(e))
+        await emit_incident(
+            "query",
+            "stream",
+            f"WebSocket stream error: {e}",
+            severity="error",
+            blocked=False,
+        )
         try:
             await websocket.send_json({"type": "error", "data": str(e)})
         except Exception:
