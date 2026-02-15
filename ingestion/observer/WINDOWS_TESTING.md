@@ -1,8 +1,55 @@
-# Observer Testing Guide (Windows)
+# Observer Testing Guide (Windows & Docker)
 
 ## Quick Start
 
-### 1. **Interactive Demo** (full watcher)
+### 0. **Docker** (recommended for production)
+
+The observer runs inside the Docker image alongside the backend. Files placed in
+mounted volumes are automatically detected.
+
+```bash
+# Build and start everything (Qdrant + backend with observer)
+docker-compose up --build -d
+
+# Check logs — look for "ingestion.watcher_started"
+docker logs -f synapsis-backend
+```
+
+**Mount your own directories** — edit `docker-compose.yml` volumes:
+
+```yaml
+volumes:
+  - ./data:/app/data
+  - ./config:/app/config
+  # Add your host directories here:
+  - C:/Users/YourName/Documents:/app/watched/Documents
+  - C:/Users/YourName/Desktop:/app/watched/Desktop
+  - C:/Users/YourName/Downloads:/app/watched/Downloads
+```
+
+Then set the env var so the backend watches them:
+
+```yaml
+environment:
+  - SYNAPSIS_WATCHED_DIRECTORIES=["/app/watched/Documents","/app/watched/Desktop","/app/watched/Downloads"]
+```
+
+**Test inside Docker:**
+
+```bash
+# Copy a file into a watched volume
+docker cp my_notes.txt synapsis-backend:/app/watched/sample_knowledge/
+
+# Or write directly
+docker exec synapsis-backend sh -c 'echo "hello world" > /app/watched/sample_knowledge/test.txt'
+
+# Watch the logs for [PROCESS] events
+docker logs -f synapsis-backend
+```
+
+---
+
+### 1. **Interactive Demo** (full watcher, native)
 
 ```cmd
 cd C:\Users\Asus\Desktop\AI_Minds

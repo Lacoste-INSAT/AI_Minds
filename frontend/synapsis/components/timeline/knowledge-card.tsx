@@ -13,6 +13,7 @@ import {
   FileType,
   Image as ImageIcon,
   Headphones,
+  FileJson,
   ExternalLink,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -36,6 +37,7 @@ const MODALITY_ICONS: Record<TimelineModality, React.ElementType> = {
   pdf: FileType,
   image: ImageIcon,
   audio: Headphones,
+  json: FileJson,
 };
 
 // ── Props ──
@@ -86,7 +88,8 @@ function KnowledgeCardInner({ item, onSelect, className }: KnowledgeCardProps) {
             <span>{formatRelativeDate(item.ingested_at)}</span>
             <span aria-hidden>·</span>
             <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
-              {item.category}
+              {item.category ?? "Uncategorized"}
+
             </Badge>
           </div>
         </div>
@@ -116,7 +119,8 @@ function KnowledgeCardInner({ item, onSelect, className }: KnowledgeCardProps) {
       <CardContent className="space-y-2 pt-0">
         {/* Summary */}
         <p className="line-clamp-2 text-sm text-muted-foreground">
-          {item.summary}
+          {item.summary ?? "No summary available"}
+
         </p>
 
         {/* Entity chips */}

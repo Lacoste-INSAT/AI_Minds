@@ -11,7 +11,8 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 interface WhyAnswerProps {
-  reasoning: string;
+
+  reasoning: string | null;
   defaultOpen?: boolean;
   className?: string;
 }

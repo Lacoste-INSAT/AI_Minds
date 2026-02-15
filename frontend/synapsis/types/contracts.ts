@@ -3,7 +3,6 @@ export type VerificationStatus = "APPROVE" | "REVISE" | "REJECT";
 export type ServiceState = "up" | "down";
 export type HealthState = "healthy" | "degraded" | "unhealthy";
 
-// Backend timeline currently documents these modalities.
 export type TimelineModality = "text" | "pdf" | "image" | "audio" | "json";
 
 export interface ChunkEvidence {
@@ -235,3 +234,4 @@ export interface ApiRootResponse {
   status: string;
   docs: string;
 }
+

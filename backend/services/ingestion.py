@@ -623,34 +623,40 @@ async def scan_and_ingest(directories: list[str] | None = None) -> dict[str, Any
         checksum_store = ChecksumStore()
 
         for directory in resolved:
-            for root, _, files in os.walk(directory):
-                for name in files:
-                    filepath = str(Path(root, name).absolute())
+            try:
+                for root, _, files in os.walk(directory):
+                    for name in files:
+                        filepath = str(Path(root, name).absolute())
 
-                    if not passes_all(filepath, config):
-                        continue
+                        if not passes_all(filepath, config):
+                            continue
 
-                    new_cs = compute(filepath)
-                    if new_cs is None:
-                        continue
+                        new_cs = compute(filepath)
+                        if new_cs is None:
+                            continue
 
-                    if checksum_store.get(filepath) == new_cs:
-                        continue
+                        if checksum_store.get(filepath) == new_cs:
+                            continue
 
-                    checksum_store.set(filepath, new_cs)
+                        checksum_store.set(filepath, new_cs)
 
-                    try:
-                        result = await ingest_file(filepath)
-                        if result:
-                            processed += 1
-                            await _broadcast_ws("file_processed", {
-                                "path": filepath,
-                                "event": "scan",
-                                **result,
-                            })
-                    except Exception as exc:
-                        errors += 1
-                        logger.error("scan.file_failed", path=filepath, error=str(exc))
+                        try:
+                            result = await ingest_file(filepath)
+                            if result:
+                                processed += 1
+                                await _broadcast_ws("file_processed", {
+                                    "path": filepath,
+                                    "event": "scan",
+                                    **result,
+                                })
+                        except Exception as exc:
+                            errors += 1
+                            logger.error("scan.file_failed", path=filepath, error=str(exc))
+            except PermissionError:
+                logger.warning("scan.permission_denied", directory=directory)
+            except Exception as walk_exc:
+                errors += 1
+                logger.error("scan.walk_failed", directory=directory, error=str(walk_exc))
 
         checksum_store.save()
 

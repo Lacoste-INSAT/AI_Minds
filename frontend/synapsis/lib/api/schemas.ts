@@ -1,13 +1,4 @@
-/**
- * Zod runtime schemas for backend response validation.
- * Mirror of types/contracts.ts, used by API client for parse-safe responses.
- *
- * Source: ARCHITECTURE.md, BACKEND_CONTRACT_ALIGNMENT.md
- */
-
 import { z } from "zod";
-
-// ─── Enums ───
 
 export const ConfidenceLevelSchema = z.enum(["high", "medium", "low", "none"]);
 export const VerificationStatusSchema = z.enum(["APPROVE", "REVISE", "REJECT"]);
@@ -24,8 +15,6 @@ export const IngestionWsEventTypeSchema = z.enum([
   "incident",
 ]);
 
-// ─── Evidence ───
-
 export const ChunkEvidenceSchema = z.object({
   chunk_id: z.string(),
   file_name: z.string(),
@@ -34,8 +23,6 @@ export const ChunkEvidenceSchema = z.object({
   score_sparse: z.number(),
   score_final: z.number(),
 });
-
-// ─── Answer ───
 
 export const AnswerPacketSchema = z.object({
   answer: z.string(),
@@ -47,15 +34,11 @@ export const AnswerPacketSchema = z.object({
   reasoning_chain: z.string().nullable(),
 });
 
-// ─── Query Stream ───
-
 export const QueryStreamMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("token"), data: z.string() }),
   z.object({ type: z.literal("done"), data: AnswerPacketSchema }),
   z.object({ type: z.literal("error"), data: z.string() }),
 ]);
-
-// ─── Graph ───
 
 export const GraphNodeSchema = z.object({
   id: z.string(),
@@ -78,8 +61,6 @@ export const GraphDataSchema = z.object({
   edges: z.array(GraphEdgeSchema),
 });
 
-// ─── Timeline ───
-
 export const TimelineItemSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -97,8 +78,6 @@ export const TimelineResponseSchema = z.object({
   page: z.number(),
   page_size: z.number(),
 });
-
-// ─── Memory Detail ───
 
 export const MemoryDetailChunkSchema = z.object({
   id: z.string(),
@@ -120,8 +99,6 @@ export const MemoryDetailSchema = z.object({
   action_items: z.array(z.string()),
   chunks: z.array(z.record(z.unknown())),
 });
-
-// ─── Memory Stats ───
 
 export const MemoryStatsSchema = z.object({
   total_documents: z.number(),
@@ -146,8 +123,6 @@ export const MemorySearchResultSchema = z.object({
   ingested_at: z.string(),
 });
 
-// ─── Config ───
-
 export const WatchedDirectorySchema = z.object({
   id: z.string().nullable(),
   path: z.string(),
@@ -162,8 +137,6 @@ export const SourcesConfigResponseSchema = z.object({
   scan_interval_seconds: z.number(),
   rate_limit_files_per_minute: z.number(),
 });
-
-// ─── Ingestion ───
 
 export const IngestionStatusResponseSchema = z.object({
   queue_depth: z.number(),
@@ -206,8 +179,6 @@ export const RuntimePolicyResponseSchema = z.object({
   outage_policy: z.string(),
 });
 
-// ─── Health ───
-
 export const ServiceHealthDetailSchema = z.object({
   status: ServiceStateSchema,
   detail: z.record(z.unknown()).nullable(),
@@ -221,8 +192,6 @@ export const HealthResponseSchema = z.object({
   disk_free_gb: z.number().nullable(),
   uptime_seconds: z.number(),
 });
-
-// ─── Insights ───
 
 export const InsightItemSchema = z.object({
   type: z.string(),
@@ -241,3 +210,4 @@ export const DigestResponseSchema = z.object({
 export const PatternsResponseSchema = z.object({
   patterns: z.array(InsightItemSchema),
 });
+

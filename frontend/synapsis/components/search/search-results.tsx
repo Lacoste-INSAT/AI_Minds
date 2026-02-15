@@ -12,6 +12,7 @@ import {
   FileType,
   Image as ImageIcon,
   Headphones,
+  FileJson,
   Search as SearchIcon,
   Inbox,
 } from "lucide-react";
@@ -32,6 +33,7 @@ const MODALITY_ICONS: Record<TimelineModality, ElementType> = {
   pdf: FileType,
   image: ImageIcon,
   audio: Headphones,
+  json: FileJson,
 };
 
 // ── Props ──

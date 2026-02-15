@@ -1,10 +1,5 @@
 "use client";
 
-/**
- * React hook for search functionality.
- * Client-side search over timeline/graph data (no dedicated backend endpoint).
- */
-
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { MemorySearchResult, TimelineItem } from "@/types/contracts";
 import type {
@@ -62,18 +57,18 @@ export function useSearch(): UseSearchReturn {
     (items: TimelineItem[], memoryHits: MemorySearchResult[]): SearchResult[] => {
       const query = filters.query.toLowerCase().trim();
       const docs = memoryHits.map((hit) => ({
-          id: hit.document_id,
-          title: hit.filename,
-          snippet: hit.summary ?? hit.content,
-          modality: hit.modality,
-          category: hit.category ?? "uncategorized",
-          entities: [],
-          score: 1,
-          source_uri: "",
-          ingested_at: hit.ingested_at,
-          group: "documents" as const,
-          target: { route: "/timeline" as const, id: hit.document_id },
-        }));
+        id: hit.document_id,
+        title: hit.filename,
+        snippet: hit.summary ?? hit.content,
+        modality: hit.modality,
+        category: hit.category ?? "uncategorized",
+        entities: [],
+        score: 1,
+        source_uri: "",
+        ingested_at: hit.ingested_at,
+        group: "documents" as const,
+        target: { route: "/timeline" as const, id: hit.document_id },
+      }));
 
       const entities = Array.from(
         new Set(
@@ -125,7 +120,7 @@ export function useSearch(): UseSearchReturn {
 
       return [...docs, ...entities, ...actions];
     },
-    [filters.category, filters.entityType, filters.modality, filters.query]
+    [filters.entityType, filters.query]
   );
 
   const search = useCallback(async () => {
@@ -151,22 +146,16 @@ export function useSearch(): UseSearchReturn {
         data: toSearchResults(timeline.data.items, result.data),
         error: null,
       });
-    } else if (!result.ok) {
-      setState({
-        status: "error",
-        data: [],
-        error: result.error,
-      });
-    } else if (!timeline.ok) {
-      setState({
-        status: "error",
-        data: [],
-        error: timeline.error,
-      });
+      return;
     }
+
+    setState({
+      status: "error",
+      data: [],
+      error: !result.ok ? result.error : !timeline.ok ? timeline.error : "Search failed",
+    });
   }, [filters, toSearchResults]);
 
-  // Auto-search with debounce
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
@@ -185,3 +174,4 @@ export function useSearch(): UseSearchReturn {
 
   return { ...state, filters, setFilters, groupedResults, search };
 }
+

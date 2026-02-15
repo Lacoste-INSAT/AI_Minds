@@ -220,7 +220,7 @@ def search_vectors(
     """
     Semantic similarity search via Qdrant.
 
-    Uses ``query_points`` (qdrant-client >= 1.12).
+    Uses ``client.search`` (qdrant-client 1.x compatible).
 
     Parameters
     ----------
@@ -243,9 +243,9 @@ def search_vectors(
         ]
         qdrant_filter = Filter(must=conditions)
 
-    response = client.query_points(
+    results = client.search(
         collection_name=settings.qdrant_collection,
-        query=query_vector,
+        query_vector=query_vector,
         limit=top_k,
         score_threshold=score_threshold,
         query_filter=qdrant_filter,
@@ -258,7 +258,7 @@ def search_vectors(
             "score": r.score,
             "payload": r.payload or {},
         }
-        for r in response.points
+        for r in results
     ]
 
 
