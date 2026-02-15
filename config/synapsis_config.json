@@ -1,12 +1,10 @@
 {
-  "watched_directories": [
-    "/down"
-  ],
+  "watched_directories": [],
   "exclude_patterns": [
     "node_modules/**",
     ".git/**",
-    "*.log",
-    "__pycache__/**"
+    "*.exe",
+    "*.dll"
   ],
   "max_file_size_mb": 50,
   "scan_interval_seconds": 30,

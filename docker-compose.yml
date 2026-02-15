@@ -1,6 +1,6 @@
 ###############################################################################
 # Synapsis — Docker Compose
-# Qdrant vector store + Backend API (with file observer)
+# Qdrant vector store + Ollama LLM server + Backend API (with file observer)
 ###############################################################################
 
 services:
@@ -20,11 +20,36 @@ services:
       - QDRANT__SERVICE__GRPC_PORT=6334
       - QDRANT__LOG_LEVEL=INFO
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:6333/healthz || exit 1"]
+      test: ["CMD-SHELL", "bash -c 'echo -e \"GET /healthz HTTP/1.0\\r\\n\\r\\n\" > /dev/tcp/localhost/6333'"]
       interval: 10s
       timeout: 5s
       retries: 3
       start_period: 10s
+
+  # ---------------------------------------------------------------------------
+  # Ollama — Local LLM Server (GPU-accelerated)
+  # ---------------------------------------------------------------------------
+  ollama:
+    image: ollama/ollama:latest
+    container_name: synapsis-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"  # Ollama API
+    volumes:
+      - ollama_data:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
 
   # ---------------------------------------------------------------------------
   # Synapsis Backend + File Observer
@@ -54,14 +79,18 @@ services:
     environment:
       - SYNAPSIS_QDRANT_HOST=qdrant
       - SYNAPSIS_QDRANT_PORT=6333
-      - SYNAPSIS_OLLAMA_BASE_URL=http://host.docker.internal:11434
+      - SYNAPSIS_OLLAMA_BASE_URL=http://ollama:11434
       - SYNAPSIS_HOST=0.0.0.0
       # Watched directories inside the container (comma-separated)
       - SYNAPSIS_WATCHED_DIRECTORIES=["/app/watched/sample_knowledge"]
     depends_on:
       qdrant:
         condition: service_healthy
+      ollama:
+        condition: service_healthy
 
 volumes:
   qdrant_data:
+    driver: local
+  ollama_data:
     driver: local

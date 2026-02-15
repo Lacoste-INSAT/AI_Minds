@@ -1,4 +1,4 @@
-from langchain.text_splitter import RecursiveCharacterTextSplitter # Text splitter for chunking documents based on character count
+from langchain_text_splitters import RecursiveCharacterTextSplitter  # Text splitter for chunking documents based on character count
 from typing import List, Dict 
 CHUNK_SIZE = 300 
 CHUNK_OVERLAP = 50
