@@ -159,43 +159,56 @@ export default function GraphPage() {
   const linkWidth = useCallback(() => 0.6, []);
 
   return (
-    <div className="animate-fade-in h-[calc(100vh-6rem)] flex flex-col">
+    <div className="animate-fade-in h-[calc(100vh-6rem)] flex flex-col relative">
+      {/* Background blob */}
+      <div className="pointer-events-none absolute -top-20 -right-20 w-[400px] h-[400px] rounded-full bg-accent/[0.03] blur-3xl animate-float" />
+
       {/* Header */}
-      <div className="flex items-center justify-between mb-4">
-        <div>
-          <h2 className="text-2xl font-bold flex items-center gap-2">
-            <Box className="w-6 h-6 text-accent-light" />
-            Knowledge Graph
-            <span className="text-xs font-normal text-accent-light bg-accent/20 rounded px-2 py-0.5 ml-2">3D</span>
-          </h2>
-          <p className="text-sm text-muted mt-1">{statsLine}</p>
+      <div className="relative overflow-hidden rounded-2xl gradient-border p-6 mb-5 animate-hero-reveal"
+           style={{ background: "linear-gradient(135deg, rgba(99,102,241,0.08) 0%, rgba(34,197,94,0.04) 50%, rgba(17,24,39,0.95) 100%)" }}>
+        <div className="absolute top-0 h-full w-[20%] bg-gradient-to-r from-transparent via-accent/[0.04] to-transparent animate-scanline pointer-events-none" />
+        <div className="relative z-10 flex items-end justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-2">
+              <div className="w-2 h-2 rounded-full bg-emerald-400 animate-breathe" />
+              <span className="text-[11px] uppercase tracking-[0.2em] text-emerald-400/70 font-medium">Neural Map</span>
+            </div>
+            <h2 className="text-3xl font-extrabold bg-gradient-to-r from-white via-emerald-200 to-indigo-300 bg-clip-text text-transparent animate-gradient-text flex items-center gap-3">
+              Knowledge Graph
+              <span className="text-xs font-medium text-accent-light bg-accent/20 rounded-lg px-2.5 py-1 ring-1 ring-accent/20">3D</span>
+            </h2>
+            <p className="text-sm text-muted/80 mt-1.5">{statsLine}</p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              onClick={zoomToFit}
+              className="glass ring-1 ring-white/[0.06] hover:ring-accent/20 rounded-lg px-3 py-1.5 text-xs transition-all flex items-center gap-1.5 hover:translate-y-[-1px]"
+            >
+              <Maximize2 className="w-3.5 h-3.5" /> Fit
+            </button>
+            <button
+              onClick={resetCamera}
+              className="glass ring-1 ring-white/[0.06] hover:ring-accent/20 rounded-lg px-3 py-1.5 text-xs transition-all flex items-center gap-1.5 hover:translate-y-[-1px]"
+            >
+              <RotateCcw className="w-3.5 h-3.5" /> Reset
+            </button>
+          </div>
         </div>
-        <div className="flex gap-1.5">
-          <button
-            onClick={zoomToFit}
-            className="bg-card/80 backdrop-blur border border-border rounded-lg px-3 py-1.5 text-xs hover:bg-accent/20 transition-colors flex items-center gap-1.5"
-          >
-            <Maximize2 className="w-3.5 h-3.5" /> Fit
-          </button>
-          <button
-            onClick={resetCamera}
-            className="bg-card/80 backdrop-blur border border-border rounded-lg px-3 py-1.5 text-xs hover:bg-accent/20 transition-colors flex items-center gap-1.5"
-          >
-            <RotateCcw className="w-3.5 h-3.5" /> Reset
-          </button>
-        </div>
+        <div className="absolute bottom-0 left-0 right-0 h-px bg-gradient-to-r from-transparent via-emerald-500/30 to-transparent" />
       </div>
 
       {/* 3D Graph container */}
       <div
         ref={containerRef}
-        className="flex-1 bg-card border border-border rounded-xl overflow-hidden min-h-0 relative"
+        className="flex-1 glass rounded-2xl gradient-border overflow-hidden min-h-0 relative"
       >
         {loading || !data ? (
-          <div className="flex items-center justify-center h-full text-muted">Loading graph…</div>
+          <div className="flex items-center justify-center h-full text-muted animate-shimmer">Loading graph…</div>
         ) : data.nodes.length === 0 ? (
-          <div className="flex items-center justify-center h-full text-muted">
-            No graph data yet. Ingest some files first.
+          <div className="flex flex-col items-center justify-center h-full text-center">
+            <Box className="w-12 h-12 text-muted/30 mb-3" />
+            <p className="text-sm text-muted">No graph data yet</p>
+            <p className="text-xs text-muted/60 mt-1">Ingest some files to see your knowledge graph</p>
           </div>
         ) : (
           <ForceGraph3D
@@ -225,18 +238,18 @@ export default function GraphPage() {
         )}
 
         {/* Controls hint */}
-        <div className="absolute bottom-3 left-3 text-[10px] text-muted/50 pointer-events-none">
+        <div className="absolute bottom-3 left-3 text-[10px] text-muted/40 bg-black/20 backdrop-blur-sm px-2 py-1 rounded-lg pointer-events-none">
           Left-drag: rotate · Right-drag: pan · Scroll: zoom · Click node: focus
         </div>
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 mt-3 text-xs text-muted flex-wrap">
+      <div className="flex items-center gap-4 mt-3 text-xs text-muted flex-wrap glass rounded-xl px-4 py-2.5 ring-1 ring-white/[0.04]">
         {Object.entries(TYPE_COLORS)
           .filter(([k]) => k !== "default")
           .map(([type, color]) => (
-            <span key={type} className="flex items-center gap-1.5">
-              <span className="w-2.5 h-2.5 rounded-full" style={{ background: color }} />
+            <span key={type} className="flex items-center gap-1.5 capitalize">
+              <span className="w-2.5 h-2.5 rounded-full ring-1 ring-white/10" style={{ background: color }} />
               {type}
             </span>
           ))}
